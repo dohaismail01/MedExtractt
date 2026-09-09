@@ -1,0 +1,22 @@
+# --- Core backend ---
+fastapi==0.115.5
+starlette==0.41.3        # pinned: mcp pulls a newer starlette that breaks fastapi
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+python-dotenv==1.0.1
+httpx==0.28.1
+
+# --- LLM provider (OpenAI-compatible client used for Groq) ---
+openai==1.57.4
+
+# --- Data / evaluation ---
+pandas==2.2.3
+kagglehub==0.3.4
+rapidfuzz==3.10.1
+
+# --- MCP (ICD-10 server + client) ---
+mcp==1.2.0
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.24.0

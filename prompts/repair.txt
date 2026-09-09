@@ -1,0 +1,5 @@
+Your previous response failed schema validation with these errors:
+{errors}
+
+Return the corrected JSON object only. No prose, no code fences.
+Fix the structure only — do not add, remove, or invent any content.

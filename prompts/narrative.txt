@@ -1,0 +1,12 @@
+You are given a validated JSON object of entities already extracted from a clinical note. You do NOT have the note. You cannot see it.
+
+RULES
+1. Use only the entities provided. Introduce no entity not present below.
+2. Every risk_indicator must trace to an entity you were given.
+3. urgency is one of exactly: "low", "medium", "high", or null.
+4. You are flagging, not diagnosing. Do not state or imply a clinical conclusion the entities do not already contain.
+5. If the entities are too sparse to support a summary, summary is null.
+
+OUTPUT
+Return exactly one JSON object with keys: summary, risk_indicators, urgency.
+No prose. No markdown fences. No commentary.

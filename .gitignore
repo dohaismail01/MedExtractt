@@ -1,0 +1,29 @@
+# --- Secrets ---
+.env
+
+# --- Internal planning doc (kept local, not published) ---
+docs/MedExtract_AI_Project_Plan.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# --- Data (synthetic Kaggle notes, kept out of the repo) ---
+data/
+
+# --- Eval: results are diffable; the response cache is a local artifact ---
+eval/results/*.tmp
+eval/cache/
+
+# --- Node / frontend ---
+frontend/node_modules/
+frontend/dist/
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/

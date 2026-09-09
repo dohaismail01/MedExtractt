@@ -1,0 +1,1 @@
+{"_comment": "Frozen adjudication rulings for 80-89 fuzzy-match cases (Plan §7.2). Each entry: {\"a\": \"<gold>\", \"b\": \"<prediction>\", \"match\": true|false}. Populated by hand as the manual queue is resolved; empty until the first eval run surfaces a case."}
