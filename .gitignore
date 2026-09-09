@@ -4,6 +4,10 @@
 # --- Internal planning doc (kept local, not published) ---
 docs/MedExtract_AI_Project_Plan.md
 
+# --- Kept local, not published ---
+HANDOFF.md
+.env.example
+
 # --- Python ---
 __pycache__/
 *.py[cod]
