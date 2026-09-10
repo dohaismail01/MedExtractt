@@ -27,6 +27,22 @@ export interface MedExtractResult {
   icd10_codes?: Record<string, string | null>;
   interaction_flags?: InteractionFlag[];
   _provenance?: Provenance;
+
+  // Agent mode only:
+  agent_trace?: AgentStep[];
+  qc_confidence?: number;
+  verification?: Verification;
+}
+
+export interface AgentStep {
+  status: "ok" | "warn" | "skip" | string;
+  message: string;
+}
+
+export interface Verification {
+  hallucination_rate: number;
+  ungrounded: { field: string; text: string | null }[];
+  grounded: boolean;
 }
 
 export interface InteractionFlag {

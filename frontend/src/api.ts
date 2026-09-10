@@ -36,6 +36,22 @@ async function extract(
   };
 }
 
+async function extractAgent(
+  note: string,
+  version: PromptVersion
+): Promise<MedExtractResult> {
+  const res = await fetch(`${BASE}/extract/agent?version=${version}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Agent run failed (${res.status}): ${detail}`);
+  }
+  return (await res.json()) as MedExtractResult;
+}
+
 async function extractFhir(note: string, version: PromptVersion): Promise<unknown> {
   const res = await fetch(`${BASE}/extract?version=${version}&format=fhir`, {
     method: "POST",
@@ -67,4 +83,11 @@ async function evalResults(): Promise<EvalResults> {
   return (await res.json()) as EvalResults;
 }
 
-export const api = { extract, extractFhir, datasetLabel, health, evalResults };
+export const api = {
+  extract,
+  extractAgent,
+  extractFhir,
+  datasetLabel,
+  health,
+  evalResults,
+};

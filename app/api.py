@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import (
+    agent,
     config,
     dataset,
     extract,
@@ -127,6 +128,31 @@ def post_extract(
             "X-Model-Id": config.resolved_model(),
         },
     )
+
+
+@app.post("/extract/agent")
+def post_extract_agent(req: ExtractRequest, version: str = Query(config.DEFAULT_VERSION)):
+    """LLM-planner agent: the model chooses which tools to call (extract, validate,
+    repair, assess, ICD-10-if-diagnosis, verify). Returns the 10-field result plus
+    `agent_trace`, `verification`, and a QUALITY-CONTROL `qc_confidence`."""
+    if version not in config.PROMPT_VERSIONS:
+        raise HTTPException(400, f"version must be one of {config.PROMPT_VERSIONS}")
+    if len(req.note) > config.NOTE_MAX_CHARS:
+        raise HTTPException(413, f"note exceeds NOTE_MAX_CHARS ({config.NOTE_MAX_CHARS})")
+
+    # Interaction flags reuse the same assembly rule as /extract.
+    try:
+        payload = agent.run_agent(req.note, version=version)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"agent run failed: {type(exc).__name__}: {exc}") from exc
+
+    meds = payload.get("medications") or []
+    if config.ENABLE_INTERACTIONS and len(meds) >= 2:
+        names = [m.get("name") for m in meds if m.get("name")]
+        flags = interactions.check_interactions(names, use_rxnorm=config.INTERACTIONS_USE_RXNORM)
+        if flags:
+            payload["interaction_flags"] = flags
+    return payload
 
 
 class LabelRequest(BaseModel):

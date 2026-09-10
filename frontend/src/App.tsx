@@ -4,6 +4,7 @@ import type { ExtractOutcome, Health, PromptVersion } from "./types";
 import NoteInput from "./components/NoteInput";
 import ResultPanel from "./components/ResultPanel";
 import DatasetLabelCard from "./components/DatasetLabelCard";
+import AgentActivity from "./components/AgentActivity";
 import EvalTable from "./components/EvalTable";
 import Icd10Panel from "./components/Icd10Panel";
 
@@ -95,6 +96,7 @@ function ExtractScreen({
   onResult: (o: ExtractOutcome | null, note: string) => void;
 }) {
   const [version, setVersion] = useState<PromptVersion>("final");
+  const [agentMode, setAgentMode] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,7 +105,12 @@ function ExtractScreen({
     setError(null);
     onResult(null, text);
     try {
-      onResult(await api.extract(text, version, true), text);
+      if (agentMode) {
+        const result = await api.extractAgent(text, version);
+        onResult({ result, meta: { validationStatus: "ok", repairAttempts: null, modelId: null } }, text);
+      } else {
+        onResult(await api.extract(text, version, true), text);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       onResult(null, text);
@@ -114,6 +121,20 @@ function ExtractScreen({
 
   return (
     <div className="grid gap-6">
+      <div className="flex items-center justify-center gap-2 text-sm">
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={agentMode}
+            onChange={(e) => setAgentMode(e.target.checked)}
+          />
+          <span className="font-medium text-ink">Agent mode</span>
+          <span className="text-subtle">
+            (LLM plans the tools: extract → validate → assess → ICD-10 → verify)
+          </span>
+        </label>
+      </div>
+
       <NoteInput
         onSubmit={submit}
         loading={loading}
@@ -128,9 +149,18 @@ function ExtractScreen({
       )}
 
       {outcome && (
-        <div>
-          <ResultPanel result={outcome.result} meta={outcome.meta} />
-          <DatasetLabelCard note={note} />
+        <div className="grid gap-4">
+          {outcome.result.agent_trace && (
+            <AgentActivity
+              trace={outcome.result.agent_trace}
+              confidence={outcome.result.qc_confidence}
+              verification={outcome.result.verification}
+            />
+          )}
+          <div>
+            <ResultPanel result={outcome.result} meta={outcome.meta} />
+            <DatasetLabelCard note={note} />
+          </div>
         </div>
       )}
     </div>

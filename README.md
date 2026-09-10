@@ -52,6 +52,11 @@ cd frontend && npm install && npm run dev            # frontend on :5173
   `?format=fhir`, and `{ "provenance": true }` optional. Diagnostics ride in the
   `X-Validation-Status`, `X-Repair-Attempts`, and `X-Model-Id` response headers.
   With >=2 medications, an `interaction_flags` key may be attached.
+- `POST /extract/agent` -- an **LLM-planner agent**: the model chooses which
+  tools to call (extract → validate → repair → assessment → ICD-10 *only if a
+  diagnosis exists* → verify). Returns the 10-field result plus `agent_trace`
+  (the ordered decisions), `verification` (grounding of each item), and
+  `qc_confidence` (a quality-control score, not a medical one).
 - `POST /dataset/label` -- body `{ "note": "..." }`; returns the Kaggle
   classification label (depression / no depression) for an exact dataset-row
   match. Separate from the 10-field extraction on purpose.
@@ -66,6 +71,9 @@ cd frontend && npm install && npm run dev            # frontend on :5173
   (summary / risk indicators / urgency), with a Schema-Validated indicator and
   View/Copy JSON. Empty fields render explicitly ("None stated"). The Kaggle
   **dataset label** is shown in its own card, separate from the extraction.
+  An **Agent mode** toggle (default on) uses `/extract/agent` and shows an
+  *Agent Activity* panel: the step-by-step tool trace, the verification result,
+  and the QC confidence.
 - **Evaluation** -- the V1->Final metrics table plus a Failure Analysis section.
 - **ICD-10** -- diagnosis -> ICD-10 code -> tool verification for the last note.
 
@@ -135,6 +143,19 @@ raw notes used only during prompt iteration. The three splits never mix.
   the 10 extraction fields.
 - **Windows stdio fix:** the MCP client forces the child process to UTF-8 so the
   stdio JSON-RPC channel doesn't choke on non-ASCII bytes.
+
+## Agent mode
+
+`POST /extract/agent` runs a genuine tool-calling agent: the model is given the
+note and a tool set (`extract_medical_info`, `validate_extraction`,
+`repair_extraction`, `generate_assessment`, `lookup_icd10`, `verify_grounding`,
+`finish`) and decides the order itself. Each tool runs server-side against the
+existing pipeline, so the planner sequences the work while the tools do the real
+extraction — the values never come from the planner's imagination. Conditional
+execution is real: ICD-10 is called only when a diagnosis exists. If the planner
+stalls or errors, it falls back to the deterministic pipeline, so the endpoint
+always returns a valid result. The `qc_confidence` is a quality-control score
+(schema valid? items grounded? no unsupported diagnosis?), never a medical one.
 
 ## Stack
 

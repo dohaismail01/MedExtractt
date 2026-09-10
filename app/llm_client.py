@@ -138,6 +138,16 @@ def chat_with_tools(
     )).choices[0].message
 
 
+def client() -> OpenAI:
+    """The underlying OpenAI-compatible client, for the agent's tool-calling loop."""
+    return _client()
+
+
+def create_with_backoff(**params):
+    """Raw chat-completions call with retry/backoff. Used by the agent loop."""
+    return _with_backoff(lambda: _client().chat.completions.create(**params))
+
+
 def parse_json(content: str) -> Optional[dict]:
     """Best-effort parse of a model reply into a dict, tolerating code fences
     and prose preamble. Returns None on failure."""
