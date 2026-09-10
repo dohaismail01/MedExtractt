@@ -444,3 +444,34 @@ medextract-ai/
   data/              Kaggle notes (gitignored)
   docs/              proposal, technical plan, labeling rules
 ```
+
+---
+
+## 16. As-Built Additions
+
+Capabilities added during the build, beyond the original proposal. Tracked here so
+the approach document stays current.
+
+- **Agent mode (LLM-planner).** `POST /extract/agent` runs a tool-calling agent:
+  the model plans the tool order (extract → validate → repair → assessment →
+  ICD-10 *only if a diagnosis exists* → verify → finish) while the tools execute
+  server-side against the existing pipeline. Adds `agent_trace`, `verification`
+  (grounding), and a quality-control `qc_confidence` (not a medical score). Falls
+  back to the deterministic `/extract` if the planner stalls.
+- **ICD-10 both ways.** Ships the MCP server *and* an in-process function-calling
+  fallback, selected by `ICD10_MODE`.
+- **Drug interaction flags (§11) implemented.** RxNorm normalisation + a local
+  ONCHigh RxCUI-pair table, attached as `interaction_flags`; status always
+  "flagged for pharmacist review".
+- **Dataset label served separately.** `POST /dataset/label` returns the Kaggle
+  depression / no-depression label for an exact note match. It is a classification
+  target, shown in its own UI card, and never part of the 10-field extraction.
+- **Evaluation on real data.** Gold / adversarial / scratch sets are built from
+  real Kaggle rows with hand-added labels — no fabricated notes.
+- **Frontend.** Three pages — Extract (results grid + AI assessment + dataset
+  label + Agent Activity panel), Evaluation (metrics table + failure analysis),
+  ICD-10 (diagnosis → code → tool verification).
+- **Error handling.** Upstream model-call failures return HTTP 502 with the real
+  reason instead of a bare 500.
+- **Tests.** 43 offline tests (schema, repair, normalise, negation, provenance,
+  MCP accept rule, interactions, FHIR, API contract, agent).
