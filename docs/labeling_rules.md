@@ -5,6 +5,14 @@ policy rather than case-by-case judgement. Every ambiguous decision below has
 one ruling; apply it uniformly. Blind re-label 5 notes after 24h and record
 self-agreement in the write-up as a stated limitation of solo labeling.
 
+> **Applies to the current gold set.** The gold / adversarial notes in `eval/`
+> are **real rows of the Kaggle dataset** with these labels hand-added (labels
+> are annotations, not fabricated data). Because that dataset is short
+> depression-screening text, the rules most exercised are *symptoms*,
+> *diagnosis* (kept empty — mood text is never promoted to a diagnosis), and
+> *negation*. The medication, procedure, and history rules below remain valid
+> policy but rarely trigger on this dataset.
+
 ## General
 - Label only what the note **explicitly states**. An empty field is a correct label.
 - Never promote a symptom cluster into a diagnosis. `diagnosis` is populated only
