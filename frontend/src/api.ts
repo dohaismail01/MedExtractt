@@ -1,6 +1,7 @@
 // Single fetch wrapper to the backend. In dev, Vite proxies /api -> :8000
 // (see vite.config.ts), so requests are same-origin and CORS is a non-issue.
 import type {
+  DatasetLabel,
   EvalResults,
   ExtractOutcome,
   Health,
@@ -35,6 +36,26 @@ async function extract(
   };
 }
 
+async function extractFhir(note: string, version: PromptVersion): Promise<unknown> {
+  const res = await fetch(`${BASE}/extract?version=${version}&format=fhir`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+  if (!res.ok) throw new Error(`FHIR export failed (${res.status})`);
+  return res.json();
+}
+
+async function datasetLabel(note: string): Promise<DatasetLabel> {
+  const res = await fetch(`${BASE}/dataset/label`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ note }),
+  });
+  if (!res.ok) throw new Error(`dataset label ${res.status}`);
+  return (await res.json()) as DatasetLabel;
+}
+
 async function health(): Promise<Health> {
   const res = await fetch(`${BASE}/health`);
   if (!res.ok) throw new Error(`health ${res.status}`);
@@ -46,4 +67,4 @@ async function evalResults(): Promise<EvalResults> {
   return (await res.json()) as EvalResults;
 }
 
-export const api = { extract, health, evalResults };
+export const api = { extract, extractFhir, datasetLabel, health, evalResults };

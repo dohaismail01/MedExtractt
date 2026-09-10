@@ -3,50 +3,60 @@ import { api } from "./api";
 import type { ExtractOutcome, Health, PromptVersion } from "./types";
 import NoteInput from "./components/NoteInput";
 import ResultPanel from "./components/ResultPanel";
-import HighlightedNote from "./components/HighlightedNote";
-import VersionCompare from "./components/VersionCompare";
+import DatasetLabelCard from "./components/DatasetLabelCard";
 import EvalTable from "./components/EvalTable";
+import Icd10Panel from "./components/Icd10Panel";
 
-type Tab = "extract" | "compare" | "evaluate";
+type Tab = "extract" | "evaluate" | "icd10";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("extract");
   const [health, setHealth] = useState<Health | null>(null);
+  const [outcome, setOutcome] = useState<ExtractOutcome | null>(null);
+  const [note, setNote] = useState("");
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth(null));
   }, []);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <header className="mb-6">
+    <div className="mx-auto max-w-4xl px-4 py-8">
+      <header className="mb-6 text-center">
         <h1 className="text-2xl font-bold text-ink">MedExtract AI</h1>
         <p className="text-sm text-subtle">
-          Clinical notes -&gt; structured medical information. An empty field is a
-          correct answer.
+          Clinical Notes → Structured Medical Information
         </p>
         <HealthBanner health={health} />
       </header>
 
-      <nav className="mb-6 flex gap-1 border-b border-slate-200">
-        {(["extract", "compare", "evaluate"] as Tab[]).map((t) => (
+      <nav className="mb-6 flex justify-center gap-1 border-b border-slate-200">
+        {(["extract", "evaluate", "icd10"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium capitalize ${
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
               tab === t
                 ? "border-blue-600 text-blue-700"
                 : "border-transparent text-subtle hover:text-ink"
             }`}
           >
-            {t}
+            {t === "icd10" ? "ICD-10" : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </nav>
 
-      {tab === "extract" && <ExtractScreen />}
-      {tab === "compare" && <VersionCompare />}
+      {tab === "extract" && (
+        <ExtractScreen
+          outcome={outcome}
+          note={note}
+          onResult={(o, n) => {
+            setOutcome(o);
+            setNote(n);
+          }}
+        />
+      )}
       {tab === "evaluate" && <EvalTable />}
+      {tab === "icd10" && <Icd10Panel result={outcome?.result ?? null} />}
     </div>
   );
 }
@@ -54,7 +64,7 @@ export default function App() {
 function HealthBanner({ health }: { health: Health | null }) {
   if (!health) {
     return (
-      <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-subtle">
+      <div className="mx-auto mt-3 max-w-xl rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-subtle">
         backend status unknown (is the API running on :8000?)
       </div>
     );
@@ -62,36 +72,41 @@ function HealthBanner({ health }: { health: Health | null }) {
   const ok = health.reachable;
   return (
     <div
-      className={`mt-3 rounded-md border px-3 py-1.5 text-xs ${
+      className={`mx-auto mt-3 max-w-2xl rounded-md border px-3 py-1.5 text-xs ${
         ok
           ? "border-emerald-200 bg-emerald-50 text-emerald-800"
           : "border-red-200 bg-red-50 text-red-800"
       }`}
     >
-      provider: {health.provider} | model: {health.model} | reachable:{" "}
-      {String(ok)}
-      {health.mcp_reachable != null && <> | mcp: {String(health.mcp_reachable)}</>}
-      {!ok && health.error ? ` | ${health.error}` : ""}
+      provider: {health.provider} · model: {health.model} · reachable: {String(ok)}
+      {health.mcp_reachable != null && <> · mcp: {String(health.mcp_reachable)}</>}
+      {!ok && health.error ? ` · ${health.error}` : ""}
     </div>
   );
 }
 
-function ExtractScreen() {
+function ExtractScreen({
+  outcome,
+  note,
+  onResult,
+}: {
+  outcome: ExtractOutcome | null;
+  note: string;
+  onResult: (o: ExtractOutcome | null, note: string) => void;
+}) {
   const [version, setVersion] = useState<PromptVersion>("final");
   const [loading, setLoading] = useState(false);
-  const [outcome, setOutcome] = useState<ExtractOutcome | null>(null);
-  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function submit(text: string) {
     setLoading(true);
     setError(null);
-    setNote(text);
+    onResult(null, text);
     try {
-      setOutcome(await api.extract(text, version, true));
+      onResult(await api.extract(text, version, true), text);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-      setOutcome(null);
+      onResult(null, text);
     } finally {
       setLoading(false);
     }
@@ -113,23 +128,10 @@ function ExtractScreen() {
       )}
 
       {outcome && (
-        <>
-          <section>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-subtle">
-              Source note (provenance highlighted)
-            </h2>
-            <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm shadow-sm">
-              <HighlightedNote note={note} provenance={outcome.result._provenance} />
-            </div>
-          </section>
-
-          <section>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-subtle">
-              Extracted fields
-            </h2>
-            <ResultPanel result={outcome.result} meta={outcome.meta} />
-          </section>
-        </>
+        <div>
+          <ResultPanel result={outcome.result} meta={outcome.meta} />
+          <DatasetLabelCard note={note} />
+        </div>
       )}
     </div>
   );

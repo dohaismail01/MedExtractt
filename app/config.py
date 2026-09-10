@@ -74,6 +74,10 @@ FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 ENABLE_ICD10 = os.getenv("ENABLE_ICD10", "true").lower() == "true"
 # "mcp" -> spawn the icd10_mcp server; "function" -> in-process function calling.
 ICD10_MODE = os.getenv("ICD10_MODE", "mcp").lower()
+# Drug interaction flags (extension). Uses RxNorm + a local ONCHigh table.
+ENABLE_INTERACTIONS = os.getenv("ENABLE_INTERACTIONS", "true").lower() == "true"
+# RxNorm normalisation adds a network call per drug; disable for fully-offline runs.
+INTERACTIONS_USE_RXNORM = os.getenv("INTERACTIONS_USE_RXNORM", "true").lower() == "true"
 
 # Valid prompt versions the /extract endpoint accepts via ?version=.
 PROMPT_VERSIONS = ("v1", "v2", "v3", "final")

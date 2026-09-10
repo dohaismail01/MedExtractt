@@ -51,9 +51,23 @@ cd frontend && npm install && npm run dev            # frontend on :5173
 - `POST /extract` -- body `{ "note": "..." }`; `?version=v1|v2|v3|final`,
   `?format=fhir`, and `{ "provenance": true }` optional. Diagnostics ride in the
   `X-Validation-Status`, `X-Repair-Attempts`, and `X-Model-Id` response headers.
-- `GET /health` -- provider + MCP reachability, resolved model.
+  With >=2 medications, an `interaction_flags` key may be attached.
+- `POST /dataset/label` -- body `{ "note": "..." }`; returns the Kaggle
+  classification label (depression / no depression) for an exact dataset-row
+  match. Separate from the 10-field extraction on purpose.
+- `GET /health` -- provider + MCP reachability, resolved model, feature flags.
 - `GET /eval/results` -- the stored V1->Final metrics table.
 - Interactive docs at `http://localhost:8000/docs`.
+
+### Frontend pages
+
+- **Extract** -- Clinical Note input -> "Extract Information" -> an *Extraction
+  Results* grid (the 7 fields + medications) and an *AI Assessment* block
+  (summary / risk indicators / urgency), with a Schema-Validated indicator and
+  View/Copy JSON. Empty fields render explicitly ("None stated"). The Kaggle
+  **dataset label** is shown in its own card, separate from the extraction.
+- **Evaluation** -- the V1->Final metrics table plus a Failure Analysis section.
+- **ICD-10** -- diagnosis -> ICD-10 code -> tool verification for the last note.
 
 ## ICD-10 (bonus)
 
@@ -113,6 +127,12 @@ raw notes used only during prompt iteration. The three splits never mix.
   `mcp==1.2.0` SDK rejects the `annotations=` kwarg; re-add on a newer SDK.
 - **FHIR export** is a dependency-light plain-dict R4 mapping (not `fhir.resources`),
   to avoid library-version fragility. Still a structural mapping, not certified.
+- **Drug interaction flags** (§12.3) are implemented as an in-process module
+  (RxNorm + a local ONCHigh RxCUI-pair table), not a second MCP tool; status is
+  always "flagged for pharmacist review" and nothing stronger.
+- **Dataset label** (depression / no depression) is served from its own endpoint
+  and shown separately in the UI -- it is a classification target, never one of
+  the 10 extraction fields.
 - **Windows stdio fix:** the MCP client forces the child process to UTF-8 so the
   stdio JSON-RPC channel doesn't choke on non-ASCII bytes.
 

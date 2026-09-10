@@ -25,7 +25,15 @@ export interface MedExtractResult {
 
   // Extension keys, attached at response assembly (not part of strict validation).
   icd10_codes?: Record<string, string | null>;
+  interaction_flags?: InteractionFlag[];
   _provenance?: Provenance;
+}
+
+export interface InteractionFlag {
+  drugs: string[];
+  rxcuis: (string | null)[];
+  source: string;
+  status: string;
 }
 
 export interface ProvenanceItem {
@@ -57,6 +65,12 @@ export interface EvalResults {
   gold_n?: number;
   adversarial_n?: number;
   metrics?: Record<PromptVersion, Record<string, unknown>>;
+}
+
+export interface DatasetLabel {
+  available: boolean;
+  matched: boolean;
+  label: string | null;
 }
 
 export interface Health {

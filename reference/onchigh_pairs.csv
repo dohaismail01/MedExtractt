@@ -1,0 +1,16 @@
+drug1,rxcui1,drug2,rxcui2,source
+warfarin,11289,aspirin,1191,ONCHigh
+warfarin,11289,fluconazole,4450,ONCHigh
+warfarin,11289,trimethoprim,10829,ONCHigh
+simvastatin,36567,clarithromycin,21212,ONCHigh
+simvastatin,36567,itraconazole,5990,ONCHigh
+methotrexate,6851,trimethoprim,10829,ONCHigh
+digoxin,3407,amiodarone,703,ONCHigh
+sildenafil,136411,nitroglycerin,4917,ONCHigh
+lithium,6448,ibuprofen,5640,ONCHigh
+spironolactone,9997,potassium chloride,8591,ONCHigh
+clopidogrel,32968,omeprazole,7646,ONCHigh
+sertraline,36437,tramadol,10689,ONCHigh
+linezolid,190376,sertraline,36437,ONCHigh
+allopurinol,519,azathioprine,1256,ONCHigh
+verapamil,11170,simvastatin,36567,ONCHigh

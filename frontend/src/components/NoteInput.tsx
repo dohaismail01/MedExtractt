@@ -27,6 +27,7 @@ export default function NoteInput({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <label className="mb-2 block text-sm font-semibold text-ink">Clinical Note</label>
       <textarea
         className="h-40 w-full resize-y rounded-md border border-slate-300 p-3 text-sm outline-none focus:border-blue-400"
         placeholder="Paste a clinical note here..."
@@ -39,7 +40,7 @@ export default function NoteInput({
           disabled={loading || !note.trim()}
           onClick={() => onSubmit(note)}
         >
-          {loading ? "Extracting..." : "Extract"}
+          {loading ? "Extracting..." : "Extract Information"}
         </button>
 
         <label className="cursor-pointer text-sm text-blue-700 hover:underline">

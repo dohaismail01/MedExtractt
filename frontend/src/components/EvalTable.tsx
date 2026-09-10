@@ -13,7 +13,16 @@ const ROWS: Array<[string, string]> = [
   ["medication_field_accuracy", "Medication field acc."],
   ["hallucination_rate", "Hallucination rate"],
   ["negation_failures", "Negation failures"],
-  ["adversarial_pass", "Adversarial pass"],
+  ["adversarial_pass", "Guardrail pass rate"],
+];
+
+// What each prompt version targeted, driven by failures logged from the prior
+// one (see prompts/CHANGELOG.md).
+const FAILURE_ANALYSIS: Array<[string, string]> = [
+  ["V1", "Baseline - role + bare schema, no rules. Establishes the failure floor."],
+  ["V2", "No-hallucination, explicit-only, missing-value behaviour, negation handling."],
+  ["V3", "Medication sub-fields, ambiguity handling, worked example, delimiters-as-data."],
+  ["Final", "Output-format enforcement, urgency constraint, cross-record consistency."],
 ];
 
 export default function EvalTable() {
@@ -70,6 +79,20 @@ export default function EvalTable() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <h3 className="mb-3 mt-8 text-center text-xs font-bold uppercase tracking-widest text-subtle">
+        Failure Analysis
+      </h3>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {FAILURE_ANALYSIS.map(([v, desc]) => (
+          <div key={v} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+            <span className="mr-2 rounded bg-slate-800 px-1.5 py-0.5 text-xs font-semibold text-white">
+              {v}
+            </span>
+            <span className="text-sm text-ink">{desc}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

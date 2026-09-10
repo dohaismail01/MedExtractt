@@ -20,7 +20,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import config, extract, fhir_export, icd10_tool, llm_client, mcp_client, provenance
+from . import (
+    config,
+    dataset,
+    extract,
+    fhir_export,
+    icd10_tool,
+    interactions,
+    llm_client,
+    mcp_client,
+    provenance,
+)
 from .schema import Extraction
 
 app = FastAPI(title="MedExtract AI", version="1.0.0")
@@ -61,6 +71,7 @@ def health() -> dict:
     info["mcp_reachable"] = (
         mcp_client.mcp_reachable() if config.ICD10_MODE == "mcp" else None
     )
+    info["interactions_enabled"] = config.ENABLE_INTERACTIONS
     return info
 
 
@@ -75,7 +86,14 @@ def post_extract(
     if len(req.note) > config.NOTE_MAX_CHARS:
         raise HTTPException(413, f"note exceeds NOTE_MAX_CHARS ({config.NOTE_MAX_CHARS})")
 
-    result, meta = extract.extract(req.note, version=version)
+    try:
+        result, meta = extract.extract(req.note, version=version)
+    except Exception as exc:  # noqa: BLE001 - surface the real cause to the client
+        # Most commonly an invalid/missing Groq key (auth error on the model call)
+        # or the provider being unreachable. Return the reason instead of a bare 500.
+        raise HTTPException(
+            502, f"upstream model call failed: {type(exc).__name__}: {exc}"
+        ) from exc
 
     # Call 3 (bonus): ICD-10 codes, attached at assembly, outside strict validation.
     icd10_codes: dict = {}
@@ -83,6 +101,16 @@ def post_extract(
     if config.ENABLE_ICD10 and result.diagnosis:
         icd10_codes = _lookup_icd10(result.diagnosis)
         payload["icd10_codes"] = icd10_codes
+
+    # Drug interaction flags (extension): attached at assembly, outside the
+    # strict 10-field model. Constrained to "flagged for pharmacist review".
+    if config.ENABLE_INTERACTIONS and len(result.medications) >= 2:
+        names = [m.name for m in result.medications if m.name]
+        flags = interactions.check_interactions(
+            names, use_rxnorm=config.INTERACTIONS_USE_RXNORM
+        )
+        if flags:
+            payload["interaction_flags"] = flags
 
     if req.provenance:
         extraction = Extraction(**{k: getattr(result, k) for k in Extraction.model_fields})
@@ -99,6 +127,19 @@ def post_extract(
             "X-Model-Id": config.resolved_model(),
         },
     )
+
+
+class LabelRequest(BaseModel):
+    note: str = Field(..., description="The raw clinical note text.")
+
+
+@app.post("/dataset/label")
+def dataset_label(req: LabelRequest) -> dict:
+    """The Kaggle classification label for an exact note match (separate from
+    the 10-field extraction). `matched: false` when the note isn't a dataset row
+    or the data files aren't present."""
+    label = dataset.lookup(req.note)
+    return {"available": dataset.available(), "matched": label is not None, "label": label}
 
 
 @app.get("/eval/results")
