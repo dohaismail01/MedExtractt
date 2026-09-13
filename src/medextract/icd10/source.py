@@ -19,7 +19,7 @@ from typing import List, Optional, Protocol
 
 from rapidfuzz import fuzz
 
-REFERENCE = Path(__file__).resolve().parent.parent.parent / "reference" / "icd10_common.csv"
+REFERENCE = Path(__file__).resolve().parent.parent.parent.parent / "reference" / "icd10_common.csv"
 
 _STOP = {"unspecified", "of", "the", "with", "without", "and", "disorder",
          "disease", "syndrome", "nos"}

@@ -14,9 +14,12 @@ against the note.
 
 ## Quick start
 
+The package lives under `src/` (src layout). Install it editable so `medextract`
+imports everywhere, then run:
+
 ```bash
-pip install -r requirements.txt
-python -m pytest                 # 53 tests
+pip install -e .                 # installs medextract (from src/) + deps
+python -m pytest                 # tests (pytest adds src/ to the path)
 python -m eval.run_eval          # metrics -> eval/reports/
 uvicorn medextract.api.app:app --reload   # http://127.0.0.1:8000/docs
 ```

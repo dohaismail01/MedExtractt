@@ -16,12 +16,21 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "mypy>=1.8"]
 
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+pythonpath = ["src"]
 addopts = "-q"
 
 [tool.mypy]
 python_version = "3.11"
+mypy_path = "src"
 packages = ["medextract"]
 ignore_missing_imports = true
