@@ -1,7 +1,7 @@
-node_modules/
-dist/
+node_modules
+dist
+dist-ssr
 *.local
-.vite/
-
-# tsc incremental build cache
-*.tsbuildinfo
+.env
+.env.*
+!.env.example

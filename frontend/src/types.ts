@@ -1,17 +1,25 @@
-// TypeScript mirror of the backend response contract (app/schema.py).
-// A schema change on either side becomes a compile error here rather than a
-// silent `undefined` at runtime.
+// Mirrors the API's flat response (medextract/brief.py -> to_brief), which is
+// the project brief's exact required schema. Evidence offsets / status / meta
+// live only inside the backend; they are not sent to the client.
 
 export type Urgency = "low" | "medium" | "high";
 
 export interface Medication {
-  name: string | null;
+  name: string;
   dose: string | null;
   frequency: string | null;
   duration: string | null;
 }
 
-export interface MedExtractResult {
+export interface Icd10Code {
+  diagnosis: string;
+  code: string | null;
+  description: string | null;
+  confidence: number;
+  needs_review: boolean;
+}
+
+export interface ExtractResponse {
   chief_complaint: string | null;
   symptoms: string[];
   diagnosis: string[];
@@ -22,80 +30,11 @@ export interface MedExtractResult {
   summary: string | null;
   risk_indicators: string[];
   urgency: Urgency | null;
-
-  // Extension keys, attached at response assembly (not part of strict validation).
-  icd10_codes?: Record<string, string | null>;
-  interaction_flags?: InteractionFlag[];
-  _provenance?: Provenance;
-
-  // Agent mode only:
-  agent_trace?: AgentStep[];
-  qc_confidence?: number;
-  verification?: Verification;
+  icd10_codes: Icd10Code[];
 }
 
-export interface AgentStep {
-  status: "ok" | "warn" | "skip" | string;
-  message: string;
-}
-
-export interface Verification {
-  hallucination_rate: number;
-  ungrounded: { field: string; text: string | null }[];
-  grounded: boolean;
-}
-
-export interface InteractionFlag {
-  drugs: string[];
-  rxcuis: (string | null)[];
-  source: string;
-  status: string;
-}
-
-export interface ProvenanceItem {
-  text: string | null;
-  span: [number, number] | null;
-  found: boolean;
-}
-
-export type Provenance = Record<string, ProvenanceItem[]>;
-
-// Diagnostics returned in response headers, surfaced in the UI.
-export interface ExtractMeta {
-  validationStatus: string | null;
-  repairAttempts: string | null;
-  modelId: string | null;
-}
-
-export interface ExtractOutcome {
-  result: MedExtractResult;
-  meta: ExtractMeta;
-}
-
-export type PromptVersion = "v1" | "v2" | "v3" | "final";
-
-export interface EvalResults {
-  available: boolean;
-  message?: string;
-  versions?: PromptVersion[];
-  gold_n?: number;
-  adversarial_n?: number;
-  metrics?: Record<PromptVersion, Record<string, unknown>>;
-}
-
-export interface DatasetLabel {
-  available: boolean;
-  matched: boolean;
-  label: string | null;
-}
-
-export interface Health {
-  provider: string;
-  model: string;
-  configured: boolean;
-  reachable: boolean;
-  error: string | null;
-  icd10_enabled?: boolean;
-  icd10_mode?: string;
-  mcp_reachable?: boolean | null;
+export interface ExtractRequest {
+  note: string;
+  include_icd10: boolean;
+  include_summary: boolean;
 }

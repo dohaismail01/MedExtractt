@@ -1,0 +1,12 @@
+{
+  "high_acuity": [
+    "severe", "crushing", "radiating", "unresponsive", "sudden onset",
+    "acute onset", "profuse", "uncontrolled", "10/10", "worst",
+    "hemorrhage", "hypotensive", "respiratory distress",
+    "altered mental status", "loss of consciousness"
+  ],
+  "moderate": [
+    "acute", "worsening", "persistent", "moderate", "high fever",
+    "recurrent", "progressive", "intractable"
+  ]
+}

@@ -1,93 +1,59 @@
-// Single fetch wrapper to the backend. In dev, Vite proxies /api -> :8000
-// (see vite.config.ts), so requests are same-origin and CORS is a non-issue.
-import type {
-  DatasetLabel,
-  EvalResults,
-  ExtractOutcome,
-  Health,
-  MedExtractResult,
-  PromptVersion,
-} from "./types";
+import type { ExtractRequest, ExtractResponse } from "./types";
 
-const BASE = "/api";
+const API_URL =
+  (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
+  "http://127.0.0.1:8000";
 
-async function extract(
-  note: string,
-  version: PromptVersion,
-  withProvenance = true
-): Promise<ExtractOutcome> {
-  const res = await fetch(`${BASE}/extract?version=${version}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note, provenance: withProvenance }),
-  });
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(`Extraction failed (${res.status}): ${detail}`);
+export class ApiError extends Error {
+  status: number;
+  details?: string[];
+  constructor(message: string, status: number, details?: string[]) {
+    super(message);
+    this.status = status;
+    this.details = details;
   }
-  const result = (await res.json()) as MedExtractResult;
-  return {
-    result,
-    meta: {
-      validationStatus: res.headers.get("X-Validation-Status"),
-      repairAttempts: res.headers.get("X-Repair-Attempts"),
-      modelId: res.headers.get("X-Model-Id"),
-    },
-  };
 }
 
-async function extractAgent(
-  note: string,
-  version: PromptVersion
-): Promise<MedExtractResult> {
-  const res = await fetch(`${BASE}/extract/agent?version=${version}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note }),
-  });
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(`Agent run failed (${res.status}): ${detail}`);
+export async function extract(req: ExtractRequest): Promise<ExtractResponse> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    });
+  } catch {
+    throw new ApiError(
+      `Cannot reach the API at ${API_URL}. Is the backend running ` +
+        `(uvicorn medextract.api.app:app --reload)?`,
+      0
+    );
   }
-  return (await res.json()) as MedExtractResult;
+
+  if (!res.ok) {
+    let detail: unknown;
+    try {
+      detail = (await res.json()).detail;
+    } catch {
+      detail = undefined;
+    }
+    if (detail && typeof detail === "object" && "error" in detail) {
+      const d = detail as { error: string; details?: string[] };
+      throw new ApiError(d.error, res.status, d.details);
+    }
+    throw new ApiError(
+      typeof detail === "string" ? detail : `Request failed (${res.status})`,
+      res.status
+    );
+  }
+
+  return (await res.json()) as ExtractResponse;
 }
 
-async function extractFhir(note: string, version: PromptVersion): Promise<unknown> {
-  const res = await fetch(`${BASE}/extract?version=${version}&format=fhir`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note }),
-  });
-  if (!res.ok) throw new Error(`FHIR export failed (${res.status})`);
+export async function health(): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_URL}/health`);
+  if (!res.ok) throw new ApiError("health check failed", res.status);
   return res.json();
 }
 
-async function datasetLabel(note: string): Promise<DatasetLabel> {
-  const res = await fetch(`${BASE}/dataset/label`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note }),
-  });
-  if (!res.ok) throw new Error(`dataset label ${res.status}`);
-  return (await res.json()) as DatasetLabel;
-}
-
-async function health(): Promise<Health> {
-  const res = await fetch(`${BASE}/health`);
-  if (!res.ok) throw new Error(`health ${res.status}`);
-  return (await res.json()) as Health;
-}
-
-async function evalResults(): Promise<EvalResults> {
-  const res = await fetch(`${BASE}/eval/results`);
-  return (await res.json()) as EvalResults;
-}
-
-export const api = {
-  extract,
-  extractAgent,
-  extractFhir,
-  datasetLabel,
-  health,
-  evalResults,
-};
+export { API_URL };

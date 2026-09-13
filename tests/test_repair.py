@@ -1,29 +1,49 @@
-"""D1-D2 — the validate-and-repair loop, with the model mocked (no network)."""
-import json
+import pytest
 
-from app import extract
-from app.schema import Extraction
+from medextract.config import get_settings
+from medextract.pipeline.repair import run_extract_validated
+from medextract.schemas import ExtractionFailed
 
-
-def test_repair_recovers_after_one_bad_response(monkeypatch):
-    """First reply has an illegal 11th key; second is valid -> repaired."""
-    replies = iter([
-        json.dumps({"chief_complaint": "cough", "made_up": 1}),  # extra="forbid" fails
-        json.dumps({"chief_complaint": "cough"}),                # valid
-    ])
-    monkeypatch.setattr(extract.llm_client, "chat", lambda *a, **k: next(replies))
-
-    ext, meta = extract.run_extraction("cough note", version="final")
-    assert meta["valid"] is True
-    assert meta["repaired"] is True
-    assert ext.chief_complaint == "cough"
+NOTE = "Patient with cough and fever. Diagnosis pneumonia."
 
 
-def test_repair_exhausts_to_empty(monkeypatch):
-    """Every reply is unfixable -> stop at cap, return valid empty schema."""
-    monkeypatch.setattr(extract.llm_client, "chat", lambda *a, **k: "not json at all")
+class ScriptedClient:
+    """Returns a scripted sequence of outputs; used to drive the repair loop."""
 
-    ext, meta = extract.run_extraction("x", version="final")
-    assert meta["valid"] is False
-    assert meta["status"] if "status" in meta else True  # status set in extract()
-    assert ext == Extraction()  # empty but valid
+    name = "scripted"
+
+    def __init__(self, outputs):
+        self.outputs = list(outputs)
+        self.calls = 0
+
+    def complete(self, system, user):
+        out = self.outputs[min(self.calls, len(self.outputs) - 1)]
+        self.calls += 1
+        return out
+
+
+def test_first_pass_valid_no_repair():
+    cfg = get_settings()
+    good = '{"symptoms": [{"text": "cough", "status": "present", "evidence": "cough and fever"}]}'
+    out = run_extract_validated(NOTE, ScriptedClient([good]), cfg)
+    assert out.repair_attempts == 0
+    assert out.grounding.result.symptoms[0].text == "cough"
+
+
+def test_repair_then_success():
+    cfg = get_settings()
+    bad = "not json"
+    good = '{"symptoms": [{"text": "fever", "status": "present", "evidence": "cough and fever"}]}'
+    client = ScriptedClient([bad, good])
+    out = run_extract_validated(NOTE, client, cfg)
+    assert out.repair_attempts == 1
+    assert out.grounding.result.symptoms[0].text == "fever"
+
+
+def test_exhausted_raises_extraction_failed():
+    cfg = get_settings().model_copy(update={"max_repair_attempts": 2})
+    client = ScriptedClient(["bad", "still bad", "nope", "never valid"])
+    with pytest.raises(ExtractionFailed) as ei:
+        run_extract_validated(NOTE, client, cfg)
+    assert ei.value.details
+    assert client.calls == 3  # 1 initial + 2 repairs

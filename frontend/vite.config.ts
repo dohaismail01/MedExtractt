@@ -1,18 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The backend runs on :8000. We proxy /api to it in dev so the browser makes
-// same-origin requests and CORS is a non-issue during development.
+// The API base URL is read from VITE_API_URL at build/dev time.
+// Default: the FastAPI dev server on localhost:8000.
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ""),
-      },
-    },
-  },
+  server: { port: 5173 },
 });

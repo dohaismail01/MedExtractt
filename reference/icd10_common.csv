@@ -1,0 +1,42 @@
+code,description,keywords
+I10,Essential (primary) hypertension,hypertension|htn|high blood pressure
+E11.9,Type 2 diabetes mellitus without complications,type 2 diabetes|dm2|t2dm|diabetes type 2|niddm
+E10.9,Type 1 diabetes mellitus without complications,type 1 diabetes|t1dm|diabetes type 1|iddm
+E11.65,Type 2 diabetes mellitus with hyperglycemia,type 2 diabetes hyperglycemia|uncontrolled diabetes
+J18.9,Pneumonia unspecified organism,pneumonia|cap|community acquired pneumonia
+J45.909,Unspecified asthma uncomplicated,asthma|reactive airway
+J44.9,Chronic obstructive pulmonary disease unspecified,copd|chronic obstructive pulmonary disease|emphysema
+I21.9,Acute myocardial infarction unspecified,myocardial infarction|mi|heart attack|nstemi|stemi|acute mi
+I63.9,Cerebral infarction unspecified,stroke|cva|cerebral infarction|ischemic stroke
+I48.91,Unspecified atrial fibrillation,atrial fibrillation|afib|a-fib|af
+I50.9,Heart failure unspecified,heart failure|chf|congestive heart failure
+D64.9,Anemia unspecified,anemia|anaemia|low hemoglobin
+F32.9,Major depressive disorder single episode unspecified,depression|major depressive disorder|mdd|depressive
+F41.9,Anxiety disorder unspecified,anxiety|anxiety disorder|gad
+E03.9,Hypothyroidism unspecified,hypothyroidism|underactive thyroid|low thyroid
+E78.5,Hyperlipidemia unspecified,hyperlipidemia|high cholesterol|dyslipidemia
+K21.9,Gastro-esophageal reflux disease without esophagitis,gerd|acid reflux|reflux|gastroesophageal reflux
+G43.909,Migraine unspecified not intractable without status migrainosus,migraine|migraines
+A41.9,Sepsis unspecified organism,sepsis|septicemia|bloodstream infection
+N39.0,Urinary tract infection site not specified,urinary tract infection|uti|bladder infection
+L03.90,Cellulitis unspecified,cellulitis|skin infection
+J40,Bronchitis not specified as acute or chronic,bronchitis|chest cold
+J20.9,Acute bronchitis unspecified,acute bronchitis
+I20.9,Angina pectoris unspecified,angina|angina pectoris|chest angina
+R07.9,Chest pain unspecified,chest pain|chest discomfort|chest tightness
+R06.00,Dyspnea unspecified,shortness of breath|dyspnea|sob|breathlessness
+R05.9,Cough unspecified,cough
+R50.9,Fever unspecified,fever|pyrexia|febrile
+R51.9,Headache unspecified,headache|cephalalgia
+R11.0,Nausea,nausea
+R11.10,Vomiting unspecified,vomiting|emesis
+R11.2,Nausea with vomiting unspecified,nausea and vomiting|nausea with vomiting
+R19.7,Diarrhea unspecified,diarrhea|diarrhoea|loose stools
+R53.83,Other fatigue,fatigue|tiredness|malaise
+R42,Dizziness and giddiness,dizziness|vertigo|lightheadedness|giddiness
+R00.2,Palpitations,palpitations|heart racing
+R10.9,Unspecified abdominal pain,abdominal pain|belly pain|stomach pain
+M54.50,Low back pain unspecified,low back pain|lbp|lumbago
+M54.9,Dorsalgia unspecified,back pain|dorsalgia
+R55,Syncope and collapse,syncope|fainting|passed out|collapse
+R07.89,Other chest pain,pleuritic chest pain|atypical chest pain

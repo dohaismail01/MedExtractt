@@ -1,74 +1,92 @@
-import type { Provenance } from "../types";
+import { useMemo } from "react";
+import type { ExtractResponse } from "../types";
 
-// Renders the note with <mark> spans for every grounded provenance item,
-// colour-coded by field. A reviewer can audit every extracted value against the
-// source in seconds. Ungrounded items (found: false) are listed below as a
-// hallucination warning rather than highlighted.
 interface Span {
   start: number;
   end: number;
-  field: string;
+  kind: "term" | "risk";
+}
+
+// The flat API no longer sends evidence offsets, so we locate each extracted
+// string in the submitted note by case-insensitive substring search. Risk terms
+// are drawn on top in a warmer color. Longer terms are matched first so a term
+// isn't swallowed by a shorter overlapping one.
+function findSpans(note: string, result: ExtractResponse): Span[] {
+  const lower = note.toLowerCase();
+
+  const terms: Array<{ text: string; kind: Span["kind"] }> = [];
+  const push = (t: string | null, kind: Span["kind"]) => {
+    if (t && t.trim()) terms.push({ text: t.trim(), kind });
+  };
+
+  if (result.chief_complaint) push(result.chief_complaint, "term");
+  result.symptoms.forEach((t) => push(t, "term"));
+  result.diagnosis.forEach((t) => push(t, "term"));
+  result.medical_history.forEach((t) => push(t, "term"));
+  result.procedures.forEach((t) => push(t, "term"));
+  result.medications.forEach((m) => push(m.name, "term"));
+  result.risk_indicators.forEach((t) => push(t, "risk"));
+
+  terms.sort((a, b) => b.text.length - a.text.length);
+
+  const spans: Span[] = [];
+  const taken: boolean[] = new Array(note.length).fill(false);
+
+  for (const { text, kind } of terms) {
+    const needle = text.toLowerCase();
+    let from = 0;
+    while (true) {
+      const idx = lower.indexOf(needle, from);
+      if (idx === -1) break;
+      const end = idx + needle.length;
+      let free = true;
+      for (let i = idx; i < end; i++) if (taken[i]) { free = false; break; }
+      if (free) {
+        for (let i = idx; i < end; i++) taken[i] = true;
+        spans.push({ start: idx, end, kind });
+      }
+      from = idx + needle.length;
+    }
+  }
+
+  return spans.sort((a, b) => a.start - b.start);
 }
 
 export default function HighlightedNote({
   note,
-  provenance,
+  result,
 }: {
   note: string;
-  provenance?: Provenance;
+  result: ExtractResponse;
 }) {
-  if (!provenance) return <p className="whitespace-pre-wrap">{note}</p>;
-
-  const spans: Span[] = [];
-  const ungrounded: { field: string; text: string }[] = [];
-  for (const [field, items] of Object.entries(provenance)) {
-    for (const it of items) {
-      if (it.found && it.span) {
-        spans.push({ start: it.span[0], end: it.span[1], field });
-      } else if (!it.found && it.text) {
-        ungrounded.push({ field, text: it.text });
-      }
+  const parts = useMemo(() => {
+    const spans = findSpans(note, result);
+    const out: Array<{ text: string; kind: Span["kind"] | null }> = [];
+    let cursor = 0;
+    for (const s of spans) {
+      if (s.start < cursor) continue;
+      if (s.start > cursor) out.push({ text: note.slice(cursor, s.start), kind: null });
+      out.push({ text: note.slice(s.start, s.end), kind: s.kind });
+      cursor = s.end;
     }
-  }
-  spans.sort((a, b) => a.start - b.start);
-
-  // Build non-overlapping segments (skip a span that overlaps an earlier one).
-  const parts: Array<{ text: string; field?: string }> = [];
-  let cursor = 0;
-  for (const s of spans) {
-    if (s.start < cursor) continue;
-    if (s.start > cursor) parts.push({ text: note.slice(cursor, s.start) });
-    parts.push({ text: note.slice(s.start, s.end), field: s.field });
-    cursor = s.end;
-  }
-  if (cursor < note.length) parts.push({ text: note.slice(cursor) });
+    if (cursor < note.length) out.push({ text: note.slice(cursor), kind: null });
+    return out;
+  }, [note, result]);
 
   return (
-    <div>
-      <p className="whitespace-pre-wrap leading-relaxed">
-        {parts.map((p, i) =>
-          p.field ? (
-            <mark key={i} className={`prov ${p.field}`} title={p.field}>
-              {p.text}
-            </mark>
-          ) : (
-            <span key={i}>{p.text}</span>
-          )
-        )}
-      </p>
-      {ungrounded.length > 0 && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm">
-          <div className="mb-1 font-semibold text-red-800">
-            Ungrounded ({ungrounded.length}) - not located in the note
-          </div>
-          <ul className="list-disc pl-5 text-red-700">
-            {ungrounded.map((u, i) => (
-              <li key={i}>
-                <span className="font-medium">{u.field}:</span> {u.text}
-              </li>
-            ))}
-          </ul>
-        </div>
+    <div className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-4 text-sm leading-relaxed">
+      {parts.map((p, i) =>
+        p.kind === "term" ? (
+          <mark key={i} className="rounded bg-sky-100 px-0.5 text-sky-900">
+            {p.text}
+          </mark>
+        ) : p.kind === "risk" ? (
+          <mark key={i} className="rounded bg-red-100 px-0.5 font-semibold text-red-900">
+            {p.text}
+          </mark>
+        ) : (
+          <span key={i}>{p.text}</span>
+        )
       )}
     </div>
   );
