@@ -1,4 +1,4 @@
-# Baseline eval report (CLAUDE.md §7 step 3)
+# Baseline eval report (SPEC.md §7 step 3)
 
 Reference metrics recorded **before** prompt iteration or agent tuning, so later
 changes are measured rather than assumed. Append-only: add new rows below, never
@@ -24,7 +24,7 @@ overwrite this one.
 | latency_ms_p95 | ~3.9 |
 | mean_icd10_tool_calls | 2.8 |
 
-> **Caveat (CLAUDE.md §10):** this gold set overlaps the stub extractor's
+> **Caveat (SPEC.md §10):** this gold set overlaps the stub extractor's
 > lexicon and is tiny (5 notes), so these numbers are a smoke test, not a claim
 > of real-world quality. Re-run with a genuine LLM provider on a held-out,
 > non-overlapping annotated set before reporting performance.

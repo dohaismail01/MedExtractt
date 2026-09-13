@@ -1,4 +1,4 @@
-"""API routes (CLAUDE.md §5).
+"""API routes (SPEC.md §5).
 
 POST /extract  -> MedExtractResponse (+ disclaimer)
                   422 validation_failed | 504 llm_timeout

@@ -1,4 +1,4 @@
-"""Wires the full pipeline (CLAUDE.md §7 / diagram §3).
+"""Wires the full pipeline (SPEC.md §7 / diagram §3).
 
     note -> validate/redact -> extract -> validate + repair -> validated data
          -> icd10 agent + summary + risk -> MedExtractResponse

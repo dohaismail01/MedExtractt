@@ -1,6 +1,6 @@
 """MedExtract - clinical note -> validated structured JSON + ICD-10 candidates.
 
-Package structured per CLAUDE.md §1. schemas.py is the single source of truth;
+Package structured per SPEC.md §1. schemas.py is the single source of truth;
 no dicts cross module boundaries.
 """
 

@@ -1,4 +1,4 @@
-"""Tool definitions exposed to the ICD-10 agent loop (CLAUDE.md §4).
+"""Tool definitions exposed to the ICD-10 agent loop (SPEC.md §4).
 
 Thin wrappers over the source adapter. Each call is counted by the agent so the
 per-term and per-note bounds are enforced. No LLM calls happen here.

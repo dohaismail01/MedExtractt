@@ -1,4 +1,4 @@
-"""Env-driven configuration (CLAUDE.md §8) via pydantic-settings.
+"""Env-driven configuration (SPEC.md §8) via pydantic-settings.
 
 All values have defaults so the system runs with zero configuration (using the
 deterministic ``stub`` LLM provider, which keeps tests offline). Set a real
@@ -44,11 +44,11 @@ class Settings(BaseSettings):
         default=0.6, alias="ICD10_CONFIDENCE_THRESHOLD"
     )
     icd10_accept_threshold: float = Field(default=0.8, alias="ICD10_ACCEPT_THRESHOLD")
-    icd10_backend: Literal["local_sqlite", "mcp"] = Field(
-        default="local_sqlite", alias="ICD10_BACKEND"
+    icd10_backend: Literal["local_sqlite", "nlm", "mcp"] = Field(
+        default="nlm", alias="ICD10_BACKEND"
     )
 
-    # --- Safety / privacy / security (CLAUDE.md §0 rule 6, §5) ---
+    # --- Safety / privacy / security (SPEC.md §0 rule 6, §5) ---
     max_note_bytes: int = Field(default=50_000, alias="MEDEXTRACT_MAX_NOTE_BYTES")
     api_key: str = Field(default="", alias="MEDEXTRACT_API_KEY")
     allowed_origins: str = Field(default="*", alias="MEDEXTRACT_ALLOWED_ORIGINS")

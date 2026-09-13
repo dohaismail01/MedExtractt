@@ -1,92 +1,351 @@
 # MedExtract
 
-Clinical note -> validated structured JSON + ICD-10 candidate codes. Built to the
-contract in [CLAUDE.md](CLAUDE.md) (design rationale in [approach.md](approach.md)).
+**An LLM-powered system that turns unstructured clinical notes into a consistent, validated JSON structure — with ICD-10 code suggestions as a bonus.**
 
-Turns a free-text clinical note into a validated object — chief complaint,
-symptoms, diagnoses, history, medications, procedures, follow-up, a grounded
-summary, documentation-based risk/urgency, and candidate ICD-10 codes. Every
-fact carries an `evidence` span with character offsets so it can be checked
-against the note.
+MedExtract reads a free-text clinical note and extracts only what is *explicitly*
+stated — chief complaint, symptoms, diagnoses, medical history, medications,
+procedures, and follow-up — then adds a grounded summary and documentation-based
+risk/urgency flags. Every extracted fact is grounded to a verbatim span in the
+note (facts that can't be located are dropped), which is how the system stays
+closed-world and avoids inventing information. The project's focus is **prompt
+engineering, structured output, validation, and evaluation**, not a raw API call.
 
-> **ICD-10 codes are suggestions for clinician review, not final coding.
-> Risk/urgency reflect language in the note, not a triage judgement.**
+> ⚠️ Research/educational prototype. ICD-10 codes are suggestions for clinician
+> review, not final coding. Risk/urgency reflect language in the note, not a
+> triage judgement. Not fit for clinical use without further validation.
 
-## Quick start
+---
 
-The package lives under `src/` (src layout). Install it editable so `medextract`
-imports everywhere, then run:
+## ✨ Key Features
+
+- **Structured extraction** of symptoms, diagnoses, medications, medical history,
+  procedures, and follow-up from free text.
+- **Medication parsing** into `name` / `dose` / `frequency` / `duration`.
+- **Evidence grounding** — each fact is matched to a verbatim substring of the
+  note; unsupported facts are dropped and counted (anti-hallucination).
+- **Schema validation + bounded repair** — invalid model output is re-prompted a
+  limited number of times, then fails cleanly (never returns a guessed object).
+- **Grounded summary** built only from validated data (the raw note is not
+  passed to the summarizer).
+- **Documentation-based risk/urgency** from an auditable term lexicon (`low` /
+  `medium` / `high`).
+- **Prompt versioning** (V1 → V2 → V3 → Final) so prompt improvements are
+  demonstrable and swappable via config.
+- **ICD-10 code suggestions (bonus)** via a bounded, tool-using agent over a
+  local ICD-10-CM dataset.
+- **FastAPI backend** returning the brief's exact flat JSON schema, plus a small
+  **React + TypeScript demo UI**.
+
+---
+
+## 🧠 How It Works
+
+```text
+Clinical note
+     ↓
+Validate / (optional) PHI redaction
+     ↓
+Extraction  ──►  LLM  (driven by a versioned prompt)
+     ↓
+Structural validation (Pydantic)  ──► invalid? ──► bounded repair (re-prompt)
+     ↓
+Evidence grounding (drop facts not found in the note)
+     ↓
+┌──────────────┬───────────────┬──────────────────┐
+│ Grounded     │ Risk / urgency │ ICD-10 agent      │
+│ summary      │ (lexicon)      │ (bonus)           │
+└──────────────┴───────────────┴──────────────────┘
+     ↓
+Flat JSON response (brief schema)
+```
+
+The LLM produces a richer internal shape (each fact carries `status` and an
+`evidence` span). The validator grounds that evidence against the note; the API
+then **flattens** the result to the project's required flat schema
+(`src/medextract/brief.py`). Evidence offsets and status stay internal.
+
+---
+
+## 🏗️ System Architecture
+
+```text
+          ┌──────────────────┐
+          │  React UI (Vite) │
+          └────────┬─────────┘
+                   │  POST /extract
+          ┌────────▼─────────┐
+          │  FastAPI backend │
+          └────────┬─────────┘
+                   │
+          ┌────────▼─────────┐      ┌──────────────────┐
+          │  Orchestrator    │─────►│ LLM client       │
+          │  (pipeline)      │      │ (adapter)        │
+          └────────┬─────────┘      └──────────────────┘
+                   │
+   ┌───────────────┼─────────────────┐
+   ▼               ▼                 ▼
+extract/validate  risk/summary   ICD-10 agent → local ICD-10-CM (SQLite FTS)
+```
+
+The **LLM client is an adapter** — swapping models (Groq, Ollama, any
+OpenAI-compatible endpoint) never touches pipeline code.
+
+---
+
+## 📁 Project Structure
+
+```text
+MEDExtract/
+├── src/medextract/
+│   ├── schemas.py          # Pydantic v2 models (single source of truth)
+│   ├── brief.py            # flatten internal model → brief's flat JSON schema
+│   ├── config.py           # env-driven settings (pydantic-settings)
+│   ├── orchestrator.py     # wires the full pipeline
+│   ├── safety.py           # PHI redaction, note validation, disclaimer
+│   ├── prompts/            # extraction_v1..final.md, repair.md, summary.md + CHANGELOG
+│   ├── llm/                # LLMClient protocol + stub / ollama / openai_compat
+│   ├── pipeline/           # extract, validate, repair, summary, risk
+│   ├── icd10/              # source (SQLite FTS) + tools + bounded agent (bonus)
+│   └── api/                # FastAPI app factory + routes
+├── eval/                   # run_eval.py, metrics.py, datasets/, reports/
+├── tests/                  # test-suite mirroring the package
+├── frontend/               # React + TypeScript + Vite demo UI
+├── reference/              # icd10_common.csv (local ICD-10-CM data)
+├── SPEC.md                 # technical build contract
+├── approach.md             # design rationale
+├── pyproject.toml
+└── .env.example
+```
+
+---
+
+## 🤖 AI / ML Approach
+
+MedExtract is an **LLM information-extraction** system. It does **not** train a
+model, use embeddings/vector search, or do RAG.
+
+**Extraction model (LLM).** An instruction-tuned chat model performs the
+extraction, driven by a versioned prompt at temperature 0 with JSON output. The
+model is configurable; the project was built to run against **Groq (GPT-OSS)** or
+a local **Ollama** model. A deterministic offline `stub` extractor also exists —
+but only so tests run without a network or key; it ignores prompt text and is not
+the product path.
+
+**Prompt engineering (the core focus).** Four prompt versions live in
+`src/medextract/prompts/`, each motivated by observed failures (see
+[CHANGELOG](src/medextract/prompts/CHANGELOG.md)):
+
+| Version | Change |
+|---|---|
+| **V1** | Baseline: extract-only, evidence required, status enum, output shape |
+| **V2** | Physician-facing role; each assertion status defined with trigger cues |
+| **V3** | Explicit negation/uncertainty, medication, ambiguity & consistency rules + a worked example |
+| **Final** | Reorganized around the nine brief-mandated elements, each a labelled, auditable section |
+
+Select one with `MEDEXTRACT_PROMPT_VERSION=v1|v2|v3|final`.
+
+**Evidence grounding (anti-hallucination).** After the LLM responds, every fact's
+`evidence` string is located in the note (exact match, then a `rapidfuzz`
+near-match fallback). Facts that can't be grounded are dropped and counted as
+`unsupported`, giving an honest hallucination signal.
+
+**ICD-10 agent (bonus).** A bounded, tool-using loop resolves each *validated*
+diagnosis to an ICD-10-CM code using named tools (`search_codes`, `lookup_code`,
+`validate_code`, `get_category`) over a local SQLite FTS dataset. It is capped
+(5 calls/term, 25/note), records a `resolution_path`, and **abstains**
+(`code: null`, `needs_review: true`) below a confidence threshold rather than
+guessing. Procedures are left uncoded (no ICD-10-PCS source wired).
+
+---
+
+## 📊 Dataset
+
+- **Brief's intended source:** the public Kaggle *Patient Diaries and Clinical
+  Notes Dataset* (synthetic clinical-note text). Check its license before
+  redistributing.
+- **In this repo:** a small synthetic **gold set** for the evaluation harness at
+  `eval/datasets/gold_set.jsonl` (**5 annotated notes**), used as a smoke test.
+  Each record is a `note` plus `gold` labels (present/negated symptoms,
+  diagnoses, medications, expected ICD-10 codes, urgency).
+- No real patient-identifiable data is included. Expanding the eval to the full
+  Kaggle set is planned (see Future Improvements).
+
+---
+
+## ⚙️ Installation
+
+Requires **Python 3.11+**.
 
 ```bash
-pip install -e .                 # installs medextract (from src/) + deps
-python -m pytest                 # tests (pytest adds src/ to the path)
-python -m eval.run_eval          # metrics -> eval/reports/
-uvicorn medextract.api.app:app --reload   # http://127.0.0.1:8000/docs
+git clone <repository-url>
+cd MEDExtract
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+
+pip install -e .            # installs medextract (from src/) + dependencies
 ```
+
+For the demo UI you also need **Node.js 18+**.
+
+---
+
+## 🔐 Environment Variables
+
+All variables have defaults (the app runs offline on the `stub` provider with no
+config). Copy `.env.example` to `.env` to override.
+
+| Variable | Purpose | Required |
+|---|---|---|
+| `MEDEXTRACT_LLM_PROVIDER` | `stub` \| `ollama` \| `openai_compat` | No (default `stub`) |
+| `MEDEXTRACT_MODEL` | Model name/id | For real LLM |
+| `MEDEXTRACT_LLM_BASE_URL` | OpenAI-compatible base URL (e.g. Groq) | For `openai_compat` |
+| `MEDEXTRACT_LLM_API_KEY` | API key for the provider | For `openai_compat` |
+| `MEDEXTRACT_PROMPT_VERSION` | `v1` \| `v2` \| `v3` \| `final` | No (default `v1`) |
+| `MAX_REPAIR_ATTEMPTS` | Repair retries on invalid output | No (default `2`) |
+| `MEDEXTRACT_API_KEY` | Optional API-key auth for the backend | No |
+| `MEDEXTRACT_REDACT_INPUT` | Redact PHI before processing | No (default `false`) |
+
+See [.env.example](.env.example) for the full list (ICD-10 bounds, CORS, body cap,
+log level). **Never commit real keys.**
+
+Example — Groq (GPT-OSS):
+
+```bash
+MEDEXTRACT_LLM_PROVIDER=openai_compat
+MEDEXTRACT_MODEL=openai/gpt-oss-20b        # or openai/gpt-oss-120b
+MEDEXTRACT_LLM_BASE_URL=https://api.groq.com/openai/v1
+MEDEXTRACT_LLM_API_KEY=gsk_...
+```
+
+---
+
+## 🚀 Usage
+
+### Backend
+
+```bash
+uvicorn medextract.api.app:app --reload    # http://127.0.0.1:8000/docs
+```
+
+Extract from a note:
 
 ```bash
 curl -s http://127.0.0.1:8000/extract \
   -H 'Content-Type: application/json' \
-  -d '{"note": "Severe chest pain radiating to the arm. Denies SOB. Hx hypertension. Dx acute MI."}'
+  -d '{"note": "Severe chest pain radiating to the arm. Denies SOB. Hx hypertension. Dx acute MI. Amlodipine 5 mg daily."}'
 ```
 
-## No LLM required
+Returns the flat schema: `chief_complaint`, `symptoms[]`, `diagnosis[]`,
+`medical_history[]`, `medications[]`, `procedures[]`, `follow_up`, `summary`,
+`risk_indicators[]`, `urgency`, `icd10_codes[]`.
 
-By default the `stub` provider (a deterministic offline extractor) runs the
-whole pipeline and test-suite with no API key. Switch to a real model by setting
-env vars — the client is an adapter, so pipeline code is untouched:
+Other endpoints: `GET /health` (status, model, prompt version, disclaimer),
+`POST /redact` (PHI redaction preview).
+
+### Frontend
 
 ```bash
-MEDEXTRACT_LLM_PROVIDER=ollama   MEDEXTRACT_MODEL=llama3.3
-# or
-MEDEXTRACT_LLM_PROVIDER=openai_compat  MEDEXTRACT_MODEL=... \
-  MEDEXTRACT_LLM_BASE_URL=https://api.example.com/v1  MEDEXTRACT_LLM_API_KEY=...
+cd frontend
+npm install
+npm run dev                                 # http://localhost:5173
 ```
 
-See [.env.example](.env.example) for all settings (CLAUDE.md §8).
+The UI defaults to the backend at `http://127.0.0.1:8000` (override with
+`VITE_API_URL`).
 
-## Layout
+### Evaluation
 
-```
-medextract/
-  schemas.py          # single source of truth (Pydantic v2)
-  config.py           # pydantic-settings, env-driven
-  prompts/            # versioned .md prompts + loader
-  llm/                # LLMClient protocol + stub / ollama / openai_compat
-  pipeline/           # extract, validate (grounding), repair, summary, risk
-  icd10/              # source (SQLite FTS) + tools + bounded agent
-  api/                # FastAPI app factory + routes
-  orchestrator.py     # wires the full pipeline
-  safety.py           # PHI redaction, validation, disclaimer
-eval/                 # datasets/, metrics.py, run_eval.py, reports/
-tests/                # mirror the package
+```bash
+python -m eval.run_eval                     # writes a report to eval/reports/
+python -m eval.run_eval --prompt-version final   # compare a prompt version
 ```
 
-## Pipeline
+---
 
+## 🖥️ Demo
+
+Screenshots / demo video coming soon. The UI lets you paste a note, run
+extraction, and see the structured fields, medications table, risk/urgency,
+ICD-10 suggestions, and the matched terms highlighted in the note.
+
+---
+
+## 📈 Results & Evaluation
+
+The harness reports per-field precision/recall/F1, unsupported-extraction rate,
+schema validity, repair rate, ICD-10 accuracy/abstention, and latency.
+
+**Baseline (smoke test)** — `stub` provider, `eval/datasets/gold_set.jsonl`
+(5 notes), prompt v1:
+
+| Metric | Value |
+|---|---|
+| Extraction precision / recall / F1 | 1.0 / 0.947 / 0.973 |
+| Unsupported-extraction rate | 0.0 |
+| Schema first-pass validity | 1.0 |
+| ICD-10 top-1 accuracy | 1.0 |
+| ICD-10 invalid-code rate | 0.0 |
+| Urgency accuracy | 1.0 |
+
+> These numbers are a **smoke test only**: the tiny gold set overlaps the stub
+> extractor's lexicon, so they do not reflect real-world quality. A run with a
+> genuine LLM on a larger, non-overlapping held-out set is required before
+> reporting performance (see [baseline report](eval/reports/baseline.md)).
+
+---
+
+## 🧪 Testing
+
+```bash
+python -m pytest
 ```
-note -> validate/redact -> extract (LLM or stub) -> validate + repair
-     -> icd10 agent + grounded summary + risk/urgency -> MedExtractResponse
-```
 
-- **Evidence grounding:** each span is located in the note (offsets recorded);
-  unsupported facts are dropped and counted, fuzzy near-misses accepted via
-  rapidfuzz. Structural failures trigger bounded repair; grounding failures are
-  silent quality signals.
-- **ICD-10 agent:** operates only on validated terms, uses named tools
-  (`search_codes`/`lookup_code`/`validate_code`/`get_category`), bounded to 5
-  calls/term and 25/note, records a `resolution_path`, abstains below the
-  confidence threshold. Procedures are left uncoded (no PCS source).
+**54 tests** cover schemas, validation + evidence grounding, repair, risk &
+summary (including a no-new-facts assertion), the ICD-10 agent, safety/redaction,
+and the orchestrator + API. Tests are forced onto the `stub` provider so they run
+offline and deterministically.
 
-## Safety / privacy / security
+---
 
-- PHI/PII redaction utility + `/redact` endpoint; raw notes never logged.
-- Optional API-key auth (`MEDEXTRACT_API_KEY`), configurable CORS, 50 KB body cap.
-- Every `/extract` response carries a disclaimer; the pipeline adds no clinical facts downstream.
+## 🛡️ Safety & Limitations
 
-See [HANDOFF.md](HANDOFF.md) for status and next steps.
+- **Intended use:** extracting and summarizing information already present in a
+  note; educational/research use.
+- **Not intended for:** diagnosis, treatment recommendation, or triage. The
+  system never adds a clinical fact not in the note.
+- **Privacy:** best-effort PHI/PII redaction utility and a `/redact` endpoint;
+  raw note text is not logged at INFO+. This is **not** certified
+  de-identification (regex redaction misses free-text names).
+- **Hallucination:** evidence grounding reduces but does not eliminate it; the
+  unsupported-extraction rate is the honest measure of what remains.
+- **ICD-10 suggestions** require clinician review and are not billing-ready.
+- Known weak spots: negation, uncertainty, and abbreviations (targeted by the
+  prompt iterations and tests).
 
-## Disclaimer
+---
 
-Research/educational prototype. Not fit for clinical deployment without
-additional safety, privacy, security, and validation work.
+## 🔮 Future Improvements
+
+- Run and report evaluation with a real LLM (Groq GPT-OSS / Ollama).
+- Expand the eval set to the full Kaggle *Patient Diaries and Clinical Notes*
+  dataset (larger, non-overlapping, held-out).
+- Head-to-head prompt comparison (V1→Final) on the identical subset.
+- ICD-10-PCS procedure coding and an optional MCP-backed ICD-10 source.
+- `mypy --strict` gate and expanded adversarial test cases.
+
+---
+
+## 👩‍💻 Contributors
+
+- Doha Ismail ([@dohaismail01](https://github.com/dohaismail01))
+
+---
+
+## 📄 License
+
+No license file is currently included. Add one (e.g. MIT) before public
+distribution.

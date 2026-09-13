@@ -1,4 +1,4 @@
-"""FastAPI app factory (CLAUDE.md §5)."""
+"""FastAPI app factory (SPEC.md §5)."""
 
 from __future__ import annotations
 

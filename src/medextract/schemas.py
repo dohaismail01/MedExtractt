@@ -1,4 +1,4 @@
-"""Data contracts (CLAUDE.md §2). Pydantic v2.
+"""Data contracts (SPEC.md §2). Pydantic v2.
 
 These models are the interface between every stage - no dicts cross module
 boundaries. The LLM is asked for a *flatter* shape (evidence as a plain

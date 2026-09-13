@@ -61,7 +61,7 @@ def test_summary_none_when_empty():
 
 
 def test_summary_introduces_no_new_terms():
-    # token-overlap assertion (CLAUDE.md §3.4)
+    # token-overlap assertion (SPEC.md §3.4)
     r = ExtractionResult(symptoms=[_fact("cough")], diagnosis=[_fact("pneumonia")])
     s = build_summary(r).lower()
     structured_tokens = {"cough", "pneumonia"}

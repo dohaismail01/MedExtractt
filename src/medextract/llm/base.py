@@ -1,4 +1,4 @@
-"""LLMClient protocol + factory (CLAUDE.md §8).
+"""LLMClient protocol + factory (SPEC.md §8).
 
 The client is an adapter: pipeline code depends only on ``LLMClient.complete``.
 The ``stub`` provider is deterministic and offline so the test-suite and a

@@ -1,4 +1,4 @@
-"""Evaluation metrics (CLAUDE.md §6)."""
+"""Evaluation metrics (SPEC.md §6)."""
 
 from __future__ import annotations
 

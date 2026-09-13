@@ -1,4 +1,4 @@
-# MedExtract — Technical Specification (Claude Code Working Doc)
+# MedExtract — Technical Specification 
 
 Clinical note → validated structured JSON + ICD-10 candidate codes.
 This file is the build contract. Read it before writing code; keep it updated when decisions change.

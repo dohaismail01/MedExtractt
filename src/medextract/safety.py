@@ -1,4 +1,4 @@
-"""Safety, privacy, and input-validation utilities (CLAUDE.md §0 rule 6, §5).
+"""Safety, privacy, and input-validation utilities (SPEC.md §0 rule 6, §5).
 
 Pragmatic prototype controls, not certified de-identification or security:
   * privacy    -- best-effort PHI/PII redaction + a detector, so raw notes are

@@ -1,4 +1,4 @@
-"""Stage 5: documentation-based risk flags + urgency (CLAUDE.md §3.5).
+"""Stage 5: documentation-based risk flags + urgency (SPEC.md §3.5).
 
 Deterministic, no LLM. A curated lexicon (shipped as data/risk_lexicon.json) of
 intensity/acuity terms is matched against the evidence spans of status==present

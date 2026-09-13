@@ -1,6 +1,9 @@
+import httpx
+
 from medextract.config import get_settings
+from medextract.icd10 import source as source_mod
 from medextract.icd10.agent import Icd10Agent
-from medextract.icd10.source import LocalSqliteSource
+from medextract.icd10.source import LocalSqliteSource, NlmOnlineSource, get_source
 from medextract.icd10.tools import Icd10Tools
 from medextract.schemas import ClinicalFact, Evidence, ExtractionResult, Status
 
@@ -106,3 +109,40 @@ def test_note_ceiling_enforced():
     r = ExtractionResult(diagnosis=[_fact("pneumonia"), _fact("asthma"), _fact("sepsis")])
     _, calls = a.code_result(r)
     assert calls <= 2
+
+
+# --- online (NLM) source: hermetic, no real network ---
+def _fake_nlm_response(monkeypatch, payload):
+    """Patch httpx.get to return a canned NLM Clinical Table response."""
+    def fake_get(url, params=None, timeout=None):
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+    monkeypatch.setattr(source_mod.httpx, "get", fake_get)
+
+
+def test_nlm_search_parses_response(monkeypatch):
+    _fake_nlm_response(monkeypatch, [1, ["I10"], None, [["I10", "Essential (primary) hypertension"]]])
+    src = NlmOnlineSource()
+    hits = src.search("hypertension")
+    assert hits and hits[0].code == "I10"
+    assert "hypertension" in hits[0].description.lower()
+
+
+def test_nlm_validate_and_lookup(monkeypatch):
+    _fake_nlm_response(monkeypatch, [1, ["E11.9"], None, [["E11.9", "Type 2 diabetes mellitus without complications"]]])
+    src = NlmOnlineSource()
+    assert src.validate("E11.9") is True
+    assert src.lookup("E11.9").code == "E11.9"
+
+
+def test_nlm_falls_back_to_local_on_network_error(monkeypatch):
+    def boom(url, params=None, timeout=None):
+        raise httpx.ConnectError("offline")
+    monkeypatch.setattr(source_mod.httpx, "get", boom)
+    src = NlmOnlineSource()  # fallback defaults to LocalSqliteSource
+    hits = src.search("hypertension")
+    assert hits and hits[0].code == "I10"  # served by the local fallback
+
+
+def test_get_source_selects_backend():
+    assert isinstance(get_source("local_sqlite"), LocalSqliteSource)
+    assert isinstance(get_source("nlm"), NlmOnlineSource)

@@ -1,4 +1,4 @@
-"""Stage 2: validation (CLAUDE.md §3.2).
+"""Stage 2: validation (SPEC.md §3.2).
 
 Layer A - structural: parse JSON, coerce through the flat LLM-facing model.
 Layer B - evidence grounding: locate each span in the note, record offsets,
@@ -88,7 +88,7 @@ def _ground_span(note: str, note_norm: str, span: str, fuzzy_threshold: int):
     """Return (Evidence | None, is_fuzzy)."""
     loc = locate(note, span)
     if loc:
-        # store the verbatim note substring (CLAUDE.md §0 rule 2), not the LLM's
+        # store the verbatim note substring (SPEC.md §0 rule 2), not the LLM's
         # span, which may differ in case/whitespace after flexible matching.
         return Evidence(text=note[loc[0]:loc[1]], start=loc[0], end=loc[1]), False
     # fuzzy fallback: accepted but no reliable offsets

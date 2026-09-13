@@ -1,4 +1,4 @@
-"""Offline evaluation harness (CLAUDE.md §6).
+"""Offline evaluation harness (SPEC.md §6).
 
 Runs the full pipeline over a JSONL gold set and writes a timestamped JSON +
 Markdown report to eval/reports/. Works with whichever provider is configured
@@ -22,6 +22,7 @@ from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from medextract.brief import to_brief  # noqa: E402
 from medextract.config import get_settings  # noqa: E402
 from medextract.orchestrator import run  # noqa: E402
 from medextract.schemas import Status  # noqa: E402
@@ -40,23 +41,41 @@ def _matches(g: str, preds: set) -> bool:
     return any(g in p or p in g for p in preds)
 
 
-def evaluate(dataset: Path, prompt_version: str, limit: int | None = None) -> Dict:
+def run_version(
+    dataset: Path, prompt_version: str, limit: int | None = None
+) -> tuple[Dict, List[dict]]:
+    """Run the pipeline for one prompt version over the dataset.
+
+    Returns ``(report, outputs)`` where ``outputs`` is the per-note record
+    (note, flat JSON output, and run meta) so each prompt version's output can be
+    saved and inspected, not just its aggregate metrics.
+    """
     cfg = get_settings().model_copy(update={"prompt_version": prompt_version})
     rows = load(dataset)
     if limit:
         rows = rows[:limit]
     acc = Accumulator()
+    outputs: List[dict] = []
 
     for row in rows:
         gold = row.get("gold", {})
         t0 = time.perf_counter()
         resp = run(row["note"], cfg=cfg)
-        acc.latencies_ms.append((time.perf_counter() - t0) * 1000)
+        latency = (time.perf_counter() - t0) * 1000
+        acc.latencies_ms.append(latency)
         acc.notes += 1
         acc.unsupported += resp.meta.unsupported_dropped
         acc.first_pass_valid += 1 if resp.meta.repair_attempts == 0 else 0
         acc.repaired += 1 if resp.meta.repair_attempts > 0 else 0
         acc.tool_calls.append(resp.meta.icd10_tool_calls)
+
+        outputs.append({
+            "note": row["note"],
+            "output": to_brief(resp),
+            "repair_attempts": resp.meta.repair_attempts,
+            "unsupported_dropped": resp.meta.unsupported_dropped,
+            "latency_ms": round(latency, 1),
+        })
 
         pred = {s.text.lower() for s in resp.symptoms if s.status == Status.PRESENT}
         pred |= {d.text.lower() for d in resp.diagnosis}
@@ -86,7 +105,12 @@ def evaluate(dataset: Path, prompt_version: str, limit: int | None = None) -> Di
             if resp.urgency == gold["urgency"]:
                 acc.urg_correct += 1
 
-    return acc.report(prompt_version, cfg.model)
+    return acc.report(prompt_version, cfg.model), outputs
+
+
+def evaluate(dataset: Path, prompt_version: str, limit: int | None = None) -> Dict:
+    report, _ = run_version(dataset, prompt_version, limit)
+    return report
 
 
 def write_reports(report: Dict) -> Path:

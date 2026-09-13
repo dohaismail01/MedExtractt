@@ -1,4 +1,4 @@
-"""Stage 3: bounded repair (CLAUDE.md §3.3).
+"""Stage 3: bounded repair (SPEC.md §3.3).
 
 A correction task, not a re-run of extraction. After the attempt limit,
 ``run_extract_validated`` raises ``ExtractionFailed``; never returns a

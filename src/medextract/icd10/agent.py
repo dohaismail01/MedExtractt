@@ -1,4 +1,4 @@
-"""Bounded ICD-10 coding agent (CLAUDE.md §4).
+"""Bounded ICD-10 coding agent (SPEC.md §4).
 
 Agentic in a narrow, defensible sense: it makes bounded search decisions to
 resolve an already-validated term. It cannot create clinical facts. Every step

@@ -1,4 +1,4 @@
-"""Stage 5: grounded summary (CLAUDE.md §3.4).
+"""Stage 5: grounded summary (SPEC.md §3.4).
 
 Input: the validated ExtractionResult only - the raw note is NOT passed. Output:
 2-4 sentences that introduce no term absent from the structured data (asserted
@@ -44,5 +44,5 @@ def build_summary(result: ExtractionResult) -> Optional[str]:
     if result.follow_up:
         parts.append(f"Plan/follow-up: {result.follow_up}")
 
-    # CLAUDE.md §3.4: 2-4 sentences. parts are in priority order; cap the tail.
+    # SPEC.md §3.4: 2-4 sentences. parts are in priority order; cap the tail.
     return " ".join(parts[:4]) if parts else None

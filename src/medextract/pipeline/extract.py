@@ -1,5 +1,5 @@
 """Stage 1: extraction. One LLM call, returns raw text; parsing is the
-validator's job (CLAUDE.md §3.1)."""
+validator's job (SPEC.md §3.1)."""
 
 from __future__ import annotations
 
