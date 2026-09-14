@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # reasoning; without headroom the JSON `content` can come back empty on long
     # notes. Keep this generous.
     llm_max_tokens: int = Field(default=8192, alias="MEDEXTRACT_LLM_MAX_TOKENS")
+    # Transient-error resilience: retry on HTTP 429 (rate limit) and 5xx with
+    # backoff, honoring a Retry-After header when the provider sends one. Groq's
+    # free tier has a low tokens-per-minute cap, so a batch eval hits 429 often.
+    llm_max_retries: int = Field(default=4, alias="MEDEXTRACT_LLM_MAX_RETRIES")
+    llm_retry_base_delay: float = Field(default=2.0, alias="MEDEXTRACT_LLM_RETRY_BASE_DELAY")
+    llm_retry_max_delay: float = Field(default=30.0, alias="MEDEXTRACT_LLM_RETRY_MAX_DELAY")
 
     # --- Prompts / pipeline ---
     prompt_version: str = Field(default="final", alias="MEDEXTRACT_PROMPT_VERSION")

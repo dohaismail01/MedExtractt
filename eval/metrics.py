@@ -38,6 +38,7 @@ class Accumulator:
     first_pass_valid: int = 0
     repaired: int = 0
     notes: int = 0
+    failed: int = 0  # notes that errored out (e.g. persistent rate limit) and were skipped
     latencies_ms: List[float] = field(default_factory=list)
     tool_calls: List[int] = field(default_factory=list)
 
@@ -45,6 +46,7 @@ class Accumulator:
         graded = self.tp + self.fp + self.fn
         return {
             "notes": self.notes,
+            "failed_notes": self.failed,
             "prompt_version": prompt_version,
             "model": model,
             # None when the dataset has no gold labels (e.g. the HF notes set):

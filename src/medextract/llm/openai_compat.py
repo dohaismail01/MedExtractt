@@ -2,19 +2,59 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 
 from ..config import Settings
 from .base import LLMError, LLMTimeout
 
 
+def _retry_after_seconds(resp: httpx.Response) -> float | None:
+    """Seconds to wait per the provider, from the Retry-After header (integer
+    seconds), else None."""
+    val = resp.headers.get("retry-after") or resp.headers.get("Retry-After")
+    if val:
+        try:
+            return float(val)
+        except ValueError:
+            return None
+    return None
+
+
 class OpenAICompatClient:
     name = "openai_compat"
+
+    # Status codes worth retrying: rate limit + transient server errors.
+    _RETRYABLE = {429, 500, 502, 503, 504}
 
     def __init__(self, cfg: Settings) -> None:
         self.cfg = cfg
         if not cfg.llm_base_url or not cfg.model:
             raise LLMError("openai_compat requires MEDEXTRACT_LLM_BASE_URL and MEDEXTRACT_MODEL")
+
+    def _post(self, url: str, payload: dict, headers: dict) -> httpx.Response:
+        """POST with bounded backoff on retryable statuses. Honors Retry-After
+        when present, otherwise exponential backoff capped at llm_retry_max_delay.
+        Raises LLMTimeout on socket timeout; returns the final Response otherwise
+        (the caller still calls raise_for_status())."""
+        delay = self.cfg.llm_retry_base_delay
+        last: httpx.Response | None = None
+        for attempt in range(self.cfg.llm_max_retries + 1):
+            try:
+                resp = httpx.post(url, json=payload, headers=headers,
+                                  timeout=self.cfg.llm_timeout_s)
+            except httpx.TimeoutException as e:
+                raise LLMTimeout(str(e)) from e
+            last = resp
+            if resp.status_code in self._RETRYABLE and attempt < self.cfg.llm_max_retries:
+                wait = _retry_after_seconds(resp)
+                wait = min(wait if wait is not None else delay, self.cfg.llm_retry_max_delay)
+                time.sleep(wait)
+                delay *= 2
+                continue
+            return resp
+        return last  # type: ignore[return-value]  # loop runs at least once
 
     def complete(self, system: str, user: str) -> str:
         url = f"{self.cfg.llm_base_url.rstrip('/')}/chat/completions"
@@ -38,12 +78,9 @@ class OpenAICompatClient:
             if response_format:
                 payload["response_format"] = response_format
             try:
-                resp = httpx.post(url, json=payload, headers=headers,
-                                  timeout=self.cfg.llm_timeout_s)
+                resp = self._post(url, payload, headers)  # retries 429/5xx with backoff
                 resp.raise_for_status()
                 return resp.json()["choices"][0]["message"]["content"]
-            except httpx.TimeoutException as e:
-                raise LLMTimeout(str(e)) from e
             except httpx.HTTPStatusError as e:
                 text = e.response.text if e.response is not None else ""
                 if (response_format is not None

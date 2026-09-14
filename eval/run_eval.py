@@ -32,8 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from medextract.brief import to_brief  # noqa: E402
 from medextract.config import get_settings  # noqa: E402
+from medextract.llm.base import LLMError  # noqa: E402
 from medextract.orchestrator import run  # noqa: E402
-from medextract.schemas import Status  # noqa: E402
+from medextract.schemas import ExtractionFailed, Status  # noqa: E402
 from eval.metrics import Accumulator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
@@ -73,7 +74,17 @@ def run_version(
     for row in rows:
         gold = row.get("gold", {})
         t0 = time.perf_counter()
-        resp = run(row["note"], cfg=cfg)
+        # A note that still fails after the client's retries (persistent rate
+        # limit, or extraction that never validates) is recorded and skipped so
+        # one bad note does not abort the whole batch.
+        try:
+            resp = run(row["note"], cfg=cfg)
+        except (LLMError, ExtractionFailed) as e:
+            acc.failed += 1
+            outputs.append({"note": row["note"], "error": str(e)[:300]})
+            print(f"  ! note {row.get('id', acc.notes + acc.failed)} failed: {str(e)[:120]}",
+                  file=sys.stderr)
+            continue
         latency = (time.perf_counter() - t0) * 1000
         acc.latencies_ms.append(latency)
         acc.notes += 1
