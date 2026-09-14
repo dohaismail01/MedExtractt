@@ -110,9 +110,8 @@ MEDExtract/
 ├── eval/                   # run_eval.py, metrics.py, datasets/, reports/
 ├── tests/                  # test-suite mirroring the package
 ├── frontend/               # React + TypeScript + Vite demo UI
-├── reference/              # icd10_common.csv (local ICD-10-CM data)
-├── SPEC.md                 # technical build contract
-├── approach.md             # design rationale
+├── reference/              # icd10_common.csv (local ICD-10-CM fallback data)
+├── docs/                   # SPEC.md (build contract) + approach.md (design rationale)
 ├── pyproject.toml
 └── .env.example
 ```
@@ -151,7 +150,10 @@ near-match fallback). Facts that can't be grounded are dropped and counted as
 
 **ICD-10 agent (bonus).** A bounded, tool-using loop resolves each *validated*
 diagnosis to an ICD-10-CM code using named tools (`search_codes`, `lookup_code`,
-`validate_code`, `get_category`) over a local SQLite FTS dataset. It is capped
+`validate_code`, `get_category`). By default it queries the live **NLM Clinical
+Table Search Service** (public US ICD-10-CM API, no key), falling back to a
+bundled local SQLite FTS dataset when offline (`ICD10_BACKEND=nlm|local_sqlite`).
+It is capped
 (5 calls/term, 25/note), records a `resolution_path`, and **abstains**
 (`code: null`, `needs_review: true`) below a confidence threshold rather than
 guessing. Procedures are left uncoded (no ICD-10-PCS source wired).
@@ -160,15 +162,23 @@ guessing. Procedures are left uncoded (no ICD-10-PCS source wired).
 
 ## 📊 Dataset
 
-- **Brief's intended source:** the public Kaggle *Patient Diaries and Clinical
-  Notes Dataset* (synthetic clinical-note text). Check its license before
-  redistributing.
-- **In this repo:** a small synthetic **gold set** for the evaluation harness at
-  `eval/datasets/gold_set.jsonl` (**5 annotated notes**), used as a smoke test.
-  Each record is a `note` plus `gold` labels (present/negated symptoms,
-  diagnoses, medications, expected ICD-10 codes, urgency).
-- No real patient-identifiable data is included. Expanding the eval to the full
-  Kaggle set is planned (see Future Improvements).
+- **Original source dataset:** the public Kaggle *Patient Diaries and Clinical
+  Notes Dataset*. Check its license before redistributing.
+- **Evaluation dataset:** the real HuggingFace
+  [`chenhaodev/medical-dialogs-notes`](https://huggingface.co/datasets/chenhaodev/medical-dialogs-notes)
+  (225 real clinical notes; columns `id`, `dialogue`, `clinical_note`). The eval
+  runs on the `clinical_note` field. **No synthetic/generated data is used.**
+- Build the eval set locally (not committed — regenerated from HuggingFace, and
+  subject to that dataset's license):
+
+  ```bash
+  python -m eval.prepare_hf_dataset          # -> eval/datasets/medical_dialogs_notes.jsonl
+  ```
+- These notes carry **no gold-standard labels**, so the harness reports the
+  label-free quality metrics (schema validity, unsupported-extraction rate,
+  repair rate, ICD-10 abstention, latency). Precision/recall/F1 require a labelled
+  set and are shown only when a dataset provides `gold` labels.
+- No real patient-identifiable data is used.
 
 ---
 
@@ -276,25 +286,29 @@ ICD-10 suggestions, and the matched terms highlighted in the note.
 
 ## 📈 Results & Evaluation
 
-The harness reports per-field precision/recall/F1, unsupported-extraction rate,
-schema validity, repair rate, ICD-10 accuracy/abstention, and latency.
+Evaluation runs on the real HuggingFace notes (see **Dataset**), so the harness
+reports the **label-free** quality metrics — unsupported-extraction rate, schema
+first-pass validity, repair rate, ICD-10 abstention rate, mean tool calls, and
+p50/p95 latency. Precision/recall/F1 require gold labels and are reported only if
+a labelled dataset is supplied.
 
-**Baseline (smoke test)** — `stub` provider, `eval/datasets/gold_set.jsonl`
-(5 notes), prompt v1:
+Reproduce (needs a real LLM — e.g. Groq GPT-OSS — set in `.env`):
 
-| Metric | Value |
-|---|---|
-| Extraction precision / recall / F1 | 1.0 / 0.947 / 0.973 |
-| Unsupported-extraction rate | 0.0 |
-| Schema first-pass validity | 1.0 |
-| ICD-10 top-1 accuracy | 1.0 |
-| ICD-10 invalid-code rate | 0.0 |
-| Urgency accuracy | 1.0 |
+```bash
+python -m eval.prepare_hf_dataset            # build the eval set from HuggingFace
+python -m eval.run_eval                       # single run -> eval/reports/
+python -m eval.compare_prompts                # V1→V2→V3→Final comparison
+```
 
-> These numbers are a **smoke test only**: the tiny gold set overlaps the stub
-> extractor's lexicon, so they do not reflect real-world quality. A run with a
-> genuine LLM on a larger, non-overlapping held-out set is required before
-> reporting performance (see [baseline report](eval/reports/baseline.md)).
+`compare_prompts` saves each prompt version's per-note outputs to
+`eval/reports/prompt_runs/<version>.jsonl` and writes a comparison report
+(`eval/reports/prompt_comparison.md`) with the metric deltas and the rationale for
+each prompt revision — the artifact that demonstrates the prompt-engineering
+progression.
+
+> No numbers are quoted here: the offline `stub` ignores prompt text, so a
+> genuine LLM run is required before reporting performance. Metrics are written to
+> `eval/reports/` when you run the commands above.
 
 ---
 

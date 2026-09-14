@@ -43,12 +43,21 @@ object — no prose, no explanation, no markdown fences.
 - Missing single value -> null. Missing list -> []. Never omit a key. Never use
   empty strings for absent values.
 
-8. CONSISTENCY ACROSS RECORDS
+8. GRANULARITY & DEDUPLICATION
+- Extract each distinct finding ONCE, in its most specific stated form. Merge
+  overlapping mentions of the same symptom into a single entry (e.g. several
+  "numbness" phrases about the same complaint -> one symptom, not five).
+- Capture clinical findings, not narrative. Do NOT extract vague functional
+  descriptions or quoted patient wording (e.g. "drops objects", "hard time
+  feeling it", "I feel off") as symptoms — record the underlying clinical symptom
+  it describes (e.g. weakness, numbness) only if the note states it.
+
+9. CONSISTENCY ACROSS RECORDS
 - The same note must always yield the same JSON. Lowercase "text" unless the note
   capitalizes a proper name. Deduplicate identical facts. Apply every rule above
   uniformly to every note.
 
-9. SCOPE
+10. SCOPE
 - Do NOT output ICD-10 codes, summary, risk indicators, or urgency — later stages
   produce those from your validated output, not from the raw note.
 

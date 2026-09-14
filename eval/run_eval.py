@@ -5,9 +5,17 @@ Markdown report to eval/reports/. Works with whichever provider is configured
 (the deterministic stub by default), so the same command measures any prompt or
 model.
 
+The eval set is the real HuggingFace ``chenhaodev/medical-dialogs-notes`` clinical
+notes (no synthetic/generated data). Generate it first with
+``python -m eval.prepare_hf_dataset``. Those notes carry no gold labels, so the
+harness reports the label-free metrics (schema validity, unsupported-extraction
+rate, repair rate, ICD-10 abstention, latency); P/R/F1 are shown only if a
+dataset provides ``gold`` labels.
+
 Usage:
+    python -m eval.prepare_hf_dataset            # build the eval set first
     python -m eval.run_eval
-    python -m eval.run_eval --dataset eval/datasets/gold_set.jsonl --prompt-version v2 --limit 100
+    python -m eval.run_eval --dataset eval/datasets/medical_dialogs_notes.jsonl --prompt-version v2 --limit 100
 """
 
 from __future__ import annotations
@@ -29,11 +37,16 @@ from medextract.schemas import Status  # noqa: E402
 from eval.metrics import Accumulator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_DATASET = ROOT / "datasets" / "gold_set.jsonl"
+DEFAULT_DATASET = ROOT / "datasets" / "medical_dialogs_notes.jsonl"
 REPORTS = ROOT / "reports"
 
 
 def load(path: Path) -> List[dict]:
+    if not path.exists():
+        raise SystemExit(
+            f"dataset not found: {path}\n"
+            "Generate the eval set first:  python -m eval.prepare_hf_dataset"
+        )
     return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
@@ -80,15 +93,19 @@ def run_version(
         pred = {s.text.lower() for s in resp.symptoms if s.status == Status.PRESENT}
         pred |= {d.text.lower() for d in resp.diagnosis}
         pred |= {m.name.lower() for m in resp.medications}
-        goldset = set()
-        for key in ("symptoms_present", "diagnosis", "diagnosis_uncertain",
-                    "medical_history", "medications"):
-            goldset |= {t.lower() for t in gold.get(key, [])}
-        matched_g = {g for g in goldset if _matches(g, pred)}
-        matched_p = {p for p in pred if _matches(p, goldset)}
-        acc.tp += len(matched_g)
-        acc.fn += len(goldset - matched_g)
-        acc.fp += len(pred - matched_p)
+        acc.pred_facts += len(pred)  # counted for every note, gold or not
+        # P/R/F1 only where the note carries gold labels; gold-less notes (e.g.
+        # the HF dialogue-notes set) still contribute the label-free metrics.
+        if gold:
+            goldset = set()
+            for key in ("symptoms_present", "diagnosis", "diagnosis_uncertain",
+                        "medical_history", "medications"):
+                goldset |= {t.lower() for t in gold.get(key, [])}
+            matched_g = {g for g in goldset if _matches(g, pred)}
+            matched_p = {p for p in pred if _matches(p, goldset)}
+            acc.tp += len(matched_g)
+            acc.fn += len(goldset - matched_g)
+            acc.fp += len(pred - matched_p)
 
         gold_icd = gold.get("icd10", {})
         pred_icd = {c.source_term.lower(): c for c in resp.icd10_codes}

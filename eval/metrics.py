@@ -26,6 +26,7 @@ class Accumulator:
     tp: int = 0
     fp: int = 0
     fn: int = 0
+    pred_facts: int = 0  # predicted facts across ALL notes (gold or not)
     icd_tp: int = 0
     icd_total: int = 0
     icd_abstain: int = 0
@@ -40,12 +41,15 @@ class Accumulator:
     tool_calls: List[int] = field(default_factory=list)
 
     def report(self, prompt_version: str, model: str) -> Dict:
+        graded = self.tp + self.fp + self.fn
         return {
             "notes": self.notes,
             "prompt_version": prompt_version,
             "model": model,
-            "extraction": prf(self.tp, self.fp, self.fn),
-            "unsupported_extraction_rate": round(self.unsupported / max(1, self.tp + self.fp), 3),
+            # None when the dataset has no gold labels (e.g. the HF notes set):
+            # P/R/F1 cannot be computed, but the label-free metrics below still can.
+            "extraction": prf(self.tp, self.fp, self.fn) if graded else None,
+            "unsupported_extraction_rate": round(self.unsupported / max(1, self.pred_facts), 3),
             "schema_first_pass_validity": round(self.first_pass_valid / max(1, self.notes), 3),
             "repair_rate": round(self.repaired / max(1, self.notes), 3),
             "icd10_top1_accuracy": round(self.icd_tp / self.icd_total, 3) if self.icd_total else None,

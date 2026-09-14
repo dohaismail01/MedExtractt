@@ -12,8 +12,9 @@ across versions plus per-transition commentary explaining *why* each step should
 improve, annotated with the measured deltas. This is the artifact the brief asks
 for: "keep the prompts and test results so the improvement can be demonstrated."
 
+    python -m eval.prepare_hf_dataset                 # build the eval set first
     python -m eval.compare_prompts
-    python -m eval.compare_prompts --dataset eval/datasets/gold_set.jsonl --versions v1 v2 v3 final
+    python -m eval.compare_prompts --dataset eval/datasets/medical_dialogs_notes.jsonl --versions v1 v2 v3 final
 
 NOTE: meaningful differences between versions require a real LLM (e.g. Groq
 GPT-OSS). The offline ``stub`` provider ignores prompt text, so every version
@@ -47,9 +48,10 @@ RATIONALE: Dict[str, str] = {
 }
 
 # Metrics surfaced in the comparison table (label -> accessor).
-def _f1(r: Dict) -> Optional[float]: return r["extraction"]["f1"]
-def _prec(r: Dict) -> Optional[float]: return r["extraction"]["precision"]
-def _rec(r: Dict) -> Optional[float]: return r["extraction"]["recall"]
+# extraction is None on gold-less datasets; guard every accessor.
+def _f1(r: Dict) -> Optional[float]: return r["extraction"]["f1"] if r["extraction"] else None
+def _prec(r: Dict) -> Optional[float]: return r["extraction"]["precision"] if r["extraction"] else None
+def _rec(r: Dict) -> Optional[float]: return r["extraction"]["recall"] if r["extraction"] else None
 
 _METRICS = [
     ("extraction F1", _f1),

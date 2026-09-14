@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     llm_timeout_s: float = Field(default=30.0, alias="MEDEXTRACT_LLM_TIMEOUT")
 
     # --- Prompts / pipeline ---
-    prompt_version: str = Field(default="v1", alias="MEDEXTRACT_PROMPT_VERSION")
+    prompt_version: str = Field(default="final", alias="MEDEXTRACT_PROMPT_VERSION")
     max_repair_attempts: int = Field(default=2, alias="MAX_REPAIR_ATTEMPTS")
     fuzzy_grounding_threshold: int = Field(default=90, alias="FUZZY_GROUNDING_THRESHOLD")
 
