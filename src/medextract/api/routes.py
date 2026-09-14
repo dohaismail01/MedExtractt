@@ -1,9 +1,11 @@
 """API routes (SPEC.md §5).
 
-POST /extract  -> MedExtractResponse (+ disclaimer)
-                  422 validation_failed | 504 llm_timeout
-GET  /health   -> { status, model, prompt_version, ... }
-POST /redact   -> PHI/PII redaction preview (privacy utility)
+POST /extract       -> flat brief schema (assignment contract)
+POST /extract/rich  -> full MedExtractResponse (status + evidence offsets +
+                       ICD-10 confidence/resolution_path) for the UI
+                  422 validation_failed | 413 too_large | 502 llm_error | 504 llm_timeout
+GET  /health        -> { status, model, prompt_version, ... }
+POST /redact        -> PHI/PII redaction preview (privacy utility)
 """
 
 from __future__ import annotations
@@ -57,8 +59,9 @@ def health() -> Dict[str, object]:
     }
 
 
-@router.post("/extract")
-def extract(req: ExtractRequest, _: None = Depends(require_api_key)):
+def _run_or_http(req: ExtractRequest) -> MedExtractResponse:
+    """Shared request handling for both /extract surfaces: size cap, log-safe
+    logging, and the run() -> HTTP error-code mapping."""
     if len(req.note.encode("utf-8")) > settings.max_note_bytes:
         raise HTTPException(
             status_code=413,
@@ -69,7 +72,7 @@ def extract(req: ExtractRequest, _: None = Depends(require_api_key)):
     logger.info("extract len=%d redactions=%s", safe.length, safe.redactions)
 
     try:
-        response: MedExtractResponse = run(
+        return run(
             req.note, include_icd10=req.include_icd10, include_summary=req.include_summary
         )
     except NoteValidationError as e:
@@ -86,10 +89,24 @@ def extract(req: ExtractRequest, _: None = Depends(require_api_key)):
         logger.warning("llm_error: %s", e)
         raise HTTPException(status_code=502, detail={"error": "llm_error"})
 
+
+@router.post("/extract")
+def extract(req: ExtractRequest, _: None = Depends(require_api_key)):
     # The API returns the assignment's exact flat schema (see medextract/brief.py).
     # The safety disclaimer is surfaced via GET /health and the UI, not inside the
     # extraction body, so the body stays exactly the required schema.
-    return to_brief(response)
+    return to_brief(_run_or_http(req))
+
+
+@router.post("/extract/rich", response_model=MedExtractResponse)
+def extract_rich(req: ExtractRequest, _: None = Depends(require_api_key)) -> MedExtractResponse:
+    """The full internal model: each fact keeps its ``status`` and grounded
+    ``evidence`` (with note offsets), and each ICD-10 suggestion keeps its
+    ``confidence``, ``needs_review`` flag and ``resolution_path``. The UI uses
+    this so it can show *validated* evidence rather than re-searching the note.
+    Every fact here has already passed schema validation and evidence grounding.
+    """
+    return _run_or_http(req)
 
 
 @router.post("/redact")

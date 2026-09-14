@@ -78,6 +78,7 @@ def run_version(
         acc.latencies_ms.append(latency)
         acc.notes += 1
         acc.unsupported += resp.meta.unsupported_dropped
+        acc.incoherent += resp.meta.incoherent_dropped
         acc.first_pass_valid += 1 if resp.meta.repair_attempts == 0 else 0
         acc.repaired += 1 if resp.meta.repair_attempts > 0 else 0
         acc.tool_calls.append(resp.meta.icd10_tool_calls)

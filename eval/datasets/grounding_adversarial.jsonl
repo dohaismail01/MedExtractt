@@ -1,0 +1,16 @@
+{"id": "GA01", "note": "Patient reports cough.", "injected": {"diagnosis": [{"text": "pneumonia", "status": "present", "evidence": "Patient reports cough."}]}, "expected": "reject"}
+{"id": "GA02", "note": "Patient reports headache.", "injected": {"diagnosis": [{"text": "migraine", "status": "present", "evidence": "Patient reports headache."}]}, "expected": "reject"}
+{"id": "GA03", "note": "Patient reports headache.", "injected": {"diagnosis": [{"text": "diabetes", "status": "present", "evidence": "Patient reports headache."}]}, "expected": "reject"}
+{"id": "GA04", "note": "Blood pressure normal. Patient reports cough.", "injected": {"diagnosis": [{"text": "hypertension", "status": "present", "evidence": "Blood pressure normal."}]}, "expected": "reject"}
+{"id": "GA05", "note": "Patient reports headache.", "injected": {"medications": [{"name": "aspirin", "dose": "81 mg", "evidence": "Patient reports headache."}]}, "expected": "reject"}
+{"id": "GA06", "note": "Patient reports headache.", "injected": {"procedures": [{"text": "ECG", "status": "present", "evidence": "Patient reports headache."}]}, "expected": "reject"}
+{"id": "GA07", "note": "The patient was seen in clinic today.", "injected": {"diagnosis": [{"text": "pneumonia", "status": "present", "evidence": "The patient was seen in clinic today."}]}, "expected": "reject"}
+{"id": "GA08", "note": "Patient reports cough.", "injected": {"diagnosis": [{"text": "sepsis", "status": "present", "evidence": "patient has severe sepsis"}]}, "expected": "reject"}
+{"id": "GA09", "note": "Patient with severe chest pain radiating to the left arm.", "injected": {"symptoms": [{"text": "chest pain", "status": "present", "evidence": "severe chest pain"}]}, "expected": "keep"}
+{"id": "GA10", "note": "Denies fever.", "injected": {"symptoms": [{"text": "fever", "status": "negated", "evidence": "Denies fever"}]}, "expected": "keep"}
+{"id": "GA11", "note": "History of hypertension.", "injected": {"medical_history": [{"text": "hypertension", "status": "historical", "evidence": "History of hypertension"}]}, "expected": "keep"}
+{"id": "GA12", "note": "Mother has a history of stroke.", "injected": {"medical_history": [{"text": "stroke", "status": "family_history", "evidence": "Mother has a history of stroke"}]}, "expected": "keep"}
+{"id": "GA13", "note": "Possible pneumonia.", "injected": {"diagnosis": [{"text": "pneumonia", "status": "uncertain", "evidence": "Possible pneumonia"}]}, "expected": "keep"}
+{"id": "GA14", "note": "Started aspirin 81 mg daily.", "injected": {"medications": [{"name": "aspirin", "dose": "81 mg", "frequency": "daily", "evidence": "aspirin 81 mg daily"}]}, "expected": "keep"}
+{"id": "GA15", "note": "ECG ordered in clinic.", "injected": {"procedures": [{"text": "ECG", "status": "present", "evidence": "ECG ordered"}]}, "expected": "keep"}
+{"id": "GA16", "note": "Pain radiating to the left arm.", "injected": {"symptoms": [{"text": "pain radiating to the left arm", "status": "present", "evidence": "radiating to the left arm"}]}, "expected": "keep"}

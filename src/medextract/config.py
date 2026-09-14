@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     prompt_version: str = Field(default="final", alias="MEDEXTRACT_PROMPT_VERSION")
     max_repair_attempts: int = Field(default=2, alias="MAX_REPAIR_ATTEMPTS")
     fuzzy_grounding_threshold: int = Field(default=90, alias="FUZZY_GROUNDING_THRESHOLD")
+    # Evidence *coherence* (validate.py Layer B, step 2): the fraction of a fact's
+    # content tokens that must be supported by its evidence span. Locating the
+    # span in the note is necessary but not sufficient — the evidence must also
+    # actually mention the extracted fact, or the fact is conservatively dropped.
+    coherence_min_coverage: float = Field(default=0.5, alias="COHERENCE_MIN_COVERAGE")
+    coherence_token_fuzz: int = Field(default=85, alias="COHERENCE_TOKEN_FUZZ")
 
     # --- ICD-10 agent ---
     max_icd10_tool_calls_per_term: int = Field(

@@ -81,6 +81,7 @@ class RunMeta(BaseModel):
     model: str
     repair_attempts: int = 0
     unsupported_dropped: int = 0
+    incoherent_dropped: int = 0  # subset of unsupported: evidence found but did not support the fact
     icd10_tool_calls: int = 0
     latency_ms: int = 0
 

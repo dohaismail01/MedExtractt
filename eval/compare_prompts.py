@@ -58,6 +58,7 @@ _METRICS = [
     ("precision", _prec),
     ("recall", _rec),
     ("unsupported rate", lambda r: r["unsupported_extraction_rate"]),
+    ("incoherent rate", lambda r: r.get("incoherent_extraction_rate")),
     ("schema 1st-pass valid", lambda r: r["schema_first_pass_validity"]),
     ("repair rate", lambda r: r["repair_rate"]),
     ("ICD-10 top-1", lambda r: r["icd10_top1_accuracy"]),

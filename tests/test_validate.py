@@ -65,7 +65,8 @@ def test_ground_drops_unsupported():
     rep = ground(NOTE, flat)
     assert rep.unsupported_dropped == 1
     assert rep.result.symptoms == []
-    assert rep.dropped_terms == ["symptom:seizure"]
+    # drop label now carries the reason (evidence not located in the note)
+    assert rep.dropped_terms == ["symptom:seizure(evidence_not_found)"]
 
 
 def test_ground_fuzzy_match_counts():

@@ -97,7 +97,7 @@ never see the raw note (risk matches its lexicon against validated evidence).
 
 | Layer | What it does | Location |
 |---|---|---|
-| **API** | FastAPI endpoints: `POST /extract`, `GET /health`, `POST /redact` | `src/medextract/api/` |
+| **API** | FastAPI: `POST /extract` (flat), `POST /extract/rich` (evidence+status), `GET /health`, `POST /redact` | `src/medextract/api/` |
 | **Orchestration** | Wires every stage and builds run metadata | `src/medextract/orchestrator.py` |
 | **Extraction** | One LLM call with a versioned prompt (temperature 0) | `src/medextract/pipeline/extract.py`, `llm/` |
 | **Validation & grounding** | Parse → Pydantic → locate each fact's evidence in the note | `src/medextract/pipeline/validate.py` |
@@ -170,15 +170,31 @@ medical coding.
 ## Evidence Grounding
 
 ```text
-LLM extraction → each extracted fact → find supporting text in the note
-              → record character offsets → keep only supported facts
+LLM extraction → each fact →  ① locate evidence in the note (offsets)
+                              ② check the evidence SUPPORTS the fact
+                           → keep only facts that pass both
 ```
 
-The system does not blindly trust the LLM. Each fact's `evidence` is located in
-the original note (exact match, then a `rapidfuzz` near-match fallback); facts that
-can't be grounded are dropped and counted as `unsupported`. This is the honest
-signal of any remaining hallucination. Offsets are computed and used internally;
-the flat API response returns the extracted values, not the spans.
+The system does not blindly trust the LLM, and grounding is **two steps**:
+
+1. **Location** — the fact's `evidence` is located in the original note (exact
+   match, then a `rapidfuzz` near-match fallback). Not found → dropped
+   (`evidence_not_found`).
+2. **Coherence** — locating the span is *necessary but not sufficient*. Evidence
+   *"Patient reports cough."* is in the note, but it does not support a diagnosis
+   of *"pneumonia"*. So the fact's content words must actually be covered by the
+   evidence text; if they are not, the fact is **conservatively dropped**
+   (`incoherent`) and counted in `incoherent_dropped`.
+
+Together these are the honest signal of any remaining hallucination. Offsets and
+status are computed internally: the **flat** `/extract` response returns the
+extracted values only, while `/extract/rich` exposes the grounded evidence,
+status, and ICD-10 audit trail for the UI.
+
+> Honest limitation: lexical coverage cannot *prove* medical truth. It enforces a
+> necessary condition and errs toward rejection, so genuine synonym/abbreviation
+> mismatches (text "atrial fibrillation" vs evidence "afib") are dropped too.
+> The grounding-robustness eval quantifies both the rejection and the recall cost.
 
 ---
 
@@ -307,11 +323,23 @@ python -m eval.compare_prompts              # V1→V2→V3→Final comparison
 ```
 
 Because these notes carry **no gold labels**, the harness reports the label-free
-quality metrics — unsupported-extraction rate, schema first-pass validity, repair
-rate, ICD-10 abstention rate, mean tool calls, and p50/p95 latency. Precision /
-recall / F1 require a labelled dataset and are reported only when one is supplied.
-`compare_prompts` also saves each prompt version's per-note outputs to
-`eval/reports/prompt_runs/` for side-by-side inspection.
+quality metrics — unsupported-/incoherent-extraction rate, schema first-pass
+validity, repair rate, ICD-10 abstention rate, mean tool calls, and p50/p95
+latency. Precision / recall / F1 require a labelled dataset.
+
+Two further harnesses ship a labelled/curated set (see [eval/README.md](eval/README.md)):
+
+```bash
+# P/R/F1 on a 30-note, author-labelled subset (provenance-flagged, no PHI)
+MEDEXTRACT_LLM_PROVIDER=stub ICD10_BACKEND=local_sqlite \
+  python -m eval.run_eval --dataset eval/datasets/labeled_mini.jsonl
+# Anti-hallucination: rejection/retention of unsupported vs supported facts
+python -m eval.grounding_eval
+```
+
+`grounding_eval` directly measures the fact↔evidence coherence gate; on the
+curated adversarial set it rejects 100% of unsupported facts while retaining
+100% of supported ones (locked by `tests/test_grounding_eval.py`).
 
 > Meaningful prompt-comparison numbers require a real LLM (the offline stub
 > ignores prompt text). Results are written to `eval/reports/` when you run the
@@ -339,18 +367,26 @@ Implemented protections:
 ## Current Status
 
 **Implemented**
-- Full pipeline: extract → validate + evidence grounding → bounded repair → summary + risk + ICD-10
-- Flat JSON schema output; FastAPI API; React frontend; CLI JSON export
+- Full pipeline: extract → validate + **two-step evidence grounding (location +
+  coherence)** → bounded repair → summary + risk + ICD-10
+- Flat `/extract` (assignment schema) **and** `/extract/rich` (status + grounded
+  evidence + ICD-10 resolution paths); FastAPI API; React frontend; CLI JSON export
+- React UI shows fact → status → validated evidence, and full ICD-10 provenance
 - Pluggable LLM providers (Groq/GPT-OSS, Ollama, stub); prompts V1→Final
-- Online NLM ICD-10 lookup with local offline fallback
-- Evaluation harness + prompt-comparison harness; hermetic test suite
+- Online NLM ICD-10 lookup with local offline fallback; confidence-based abstention
+- Grounding-robustness eval + 30-note labelled subset (P/R/F1) + prompt-comparison
+  harness; hermetic test suite (120 tests)
 
 **In progress / partial**
 - Prompt V1→Final comparison numbers (harness ready; needs a real-LLM run)
-- Larger labelled evaluation (current eval set has no gold labels → no P/R/F1)
+- Labelled evaluation is a small, author-constructed subset (P/R/F1 measured on
+  controlled cases, not a claim of real-world clinical accuracy)
+- Coherence gate is lexical (necessary-condition, conservative-reject); it cannot
+  prove semantic medical truth and drops genuine synonym/abbreviation matches
 
 **Planned**
 - ICD-10-PCS procedure coding (procedures currently abstain)
+- Larger, independently-annotated evaluation set
 - `mypy --strict` clean pass
 
 ---

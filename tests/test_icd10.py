@@ -146,3 +146,95 @@ def test_nlm_falls_back_to_local_on_network_error(monkeypatch):
 def test_get_source_selects_backend():
     assert isinstance(get_source("local_sqlite"), LocalSqliteSource)
     assert isinstance(get_source("nlm"), NlmOnlineSource)
+
+
+# --- PRIORITY 6/7: bounded-agent behavior & candidate ranking ----------------
+from medextract.icd10.source import Candidate  # noqa: E402
+
+
+class _FakeSource:
+    """A controllable source for asserting agent decisions independent of data."""
+    supports_pcs = False
+
+    def __init__(self, results, valid_codes):
+        self._results = results          # dict: query.lower() -> [Candidate,...]
+        self._valid = {c.upper() for c in valid_codes}
+        self.searches = []
+
+    def search(self, query, code_type="CM", limit=5):
+        self.searches.append(query)
+        return list(self._results.get(query.lower(), []))
+
+    def lookup(self, code):
+        return Candidate(code, "desc", 1.0) if code.upper() in self._valid else None
+
+    def validate(self, code):
+        return code.upper() in self._valid
+
+    def get_category(self, code):
+        return []
+
+
+def test_strong_candidate_accepted():
+    src = _FakeSource({"pneumonia": [Candidate("J18.9", "Pneumonia", 0.95)]}, {"J18.9"})
+    c = Icd10Agent(source=src).resolve("pneumonia", Icd10Tools(src))
+    assert c.code == "J18.9" and c.needs_review is False
+    assert c.resolution_path[-1] == "accept"
+
+
+def test_multiple_candidates_best_is_selected():
+    # search returns several; the top-scored valid one wins
+    src = _FakeSource({"sepsis": [
+        Candidate("A41.9", "Sepsis, unspecified", 0.93),
+        Candidate("A41.50", "Gram-negative sepsis", 0.72),
+    ]}, {"A41.9", "A41.50"})
+    c = Icd10Agent(source=src).resolve("sepsis", Icd10Tools(src))
+    assert c.code == "A41.9"  # highest score selected
+
+
+def test_weak_result_triggers_broader_search():
+    # direct term weak; dropping the modifier finds a strong match
+    src = _FakeSource({
+        "acute bronchitis": [Candidate("J20.9", "Acute bronchitis", 0.55)],
+        "bronchitis": [Candidate("J40", "Bronchitis", 0.9)],
+    }, {"J20.9", "J40"})
+    agent = Icd10Agent(source=src)
+    c = agent.resolve("acute bronchitis", Icd10Tools(src))
+    assert any("broaden" in p for p in c.resolution_path)
+
+
+def test_invalid_code_is_rejected_agent_abstains():
+    # top candidate scores high but fails validation -> must NOT be returned
+    src = _FakeSource({"madeupitis": [Candidate("ZZ.99", "bogus", 0.99)]}, valid_codes=set())
+    c = Icd10Agent(source=src).resolve("madeupitis", Icd10Tools(src))
+    assert c.code is None and c.needs_review is True
+    assert any(p.startswith("validate:ZZ.99:invalid") for p in c.resolution_path)
+
+
+def test_low_confidence_yields_null_and_needs_review():
+    src = _FakeSource({"vague complaint": [Candidate("R69", "Illness unspecified", 0.3)]}, {"R69"})
+    c = Icd10Agent(source=src).resolve("vague complaint", Icd10Tools(src))
+    assert c.code is None
+    assert c.needs_review is True
+    assert c.confidence < 0.6
+
+
+def test_agent_never_invents_code_when_no_candidates():
+    src = _FakeSource({}, valid_codes=set())  # search returns nothing at all
+    c = Icd10Agent(source=src).resolve("anything", Icd10Tools(src))
+    assert c.code is None and c.needs_review is True
+
+
+def test_resolution_path_is_recorded():
+    tools = Icd10Tools(source())
+    c = agent().resolve("hypertension", tools)
+    assert c.resolution_path  # non-empty audit trail
+    assert c.resolution_path[0].startswith("search:")
+
+
+def test_coding_is_suggestion_confidence_and_review_present():
+    tools = Icd10Tools(source())
+    c = agent().resolve("hypertension", tools)
+    # every suggestion carries confidence + needs_review (it is advisory, not a decision)
+    assert 0.0 <= c.confidence <= 1.0
+    assert isinstance(c.needs_review, bool)

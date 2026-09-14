@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { extract, health, ApiError, API_URL } from "./api";
-import type { ExtractResponse } from "./types";
+import { extractRich, health, ApiError, API_URL } from "./api";
+import type { RichResponse } from "./types";
+import { URGENCY_MAP } from "./types";
 import HighlightedNote from "./components/HighlightedNote";
 import FactList from "./components/FactList";
 import MedicationTable from "./components/MedicationTable";
@@ -17,7 +18,7 @@ export default function App() {
   // `submitted` is the note that produced the current result, so highlighting
   // stays aligned even if the textarea is edited afterwards.
   const [submitted, setSubmitted] = useState("");
-  const [result, setResult] = useState<ExtractResponse | null>(null);
+  const [result, setResult] = useState<RichResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ msg: string; details?: string[] } | null>(null);
   const [includeIcd10, setIncludeIcd10] = useState(true);
@@ -40,7 +41,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await extract({
+      const res = await extractRich({
         note,
         include_icd10: includeIcd10,
         include_summary: includeSummary,
@@ -138,7 +139,7 @@ export default function App() {
             <>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">Result</h2>
-                <UrgencyBadge urgency={result.urgency} />
+                <UrgencyBadge urgency={result.urgency ? URGENCY_MAP[result.urgency] : null} />
               </div>
 
               {result.summary && (
@@ -155,7 +156,12 @@ export default function App() {
                   <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Chief complaint
                   </h3>
-                  <p className="text-sm text-slate-700">{result.chief_complaint}</p>
+                  <p className="text-sm text-slate-700">{result.chief_complaint.text}</p>
+                  {result.chief_complaint.evidence?.text && (
+                    <p className="mt-1 border-l-2 border-slate-200 pl-2 text-xs italic text-slate-500">
+                      “{result.chief_complaint.evidence.text}”
+                    </p>
+                  )}
                 </section>
               )}
 
@@ -185,7 +191,7 @@ export default function App() {
                         key={i}
                         className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20"
                       >
-                        {r}
+                        {r.term}
                       </span>
                     ))}
                   </div>

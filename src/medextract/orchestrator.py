@@ -51,6 +51,7 @@ def run(
         model=cfg.model,
         repair_attempts=outcome.repair_attempts,
         unsupported_dropped=outcome.grounding.unsupported_dropped,
+        incoherent_dropped=outcome.grounding.incoherent_dropped,
         icd10_tool_calls=tool_calls,
         latency_ms=int((time.perf_counter() - t0) * 1000),
     )

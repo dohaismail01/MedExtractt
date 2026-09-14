@@ -34,6 +34,7 @@ class Accumulator:
     urg_correct: int = 0
     urg_total: int = 0
     unsupported: int = 0
+    incoherent: int = 0
     first_pass_valid: int = 0
     repaired: int = 0
     notes: int = 0
@@ -50,6 +51,7 @@ class Accumulator:
             # P/R/F1 cannot be computed, but the label-free metrics below still can.
             "extraction": prf(self.tp, self.fp, self.fn) if graded else None,
             "unsupported_extraction_rate": round(self.unsupported / max(1, self.pred_facts), 3),
+            "incoherent_extraction_rate": round(self.incoherent / max(1, self.pred_facts), 3),
             "schema_first_pass_validity": round(self.first_pass_valid / max(1, self.notes), 3),
             "repair_rate": round(self.repaired / max(1, self.notes), 3),
             "icd10_top1_accuracy": round(self.icd_tp / self.icd_total, 3) if self.icd_total else None,

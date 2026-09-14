@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ExtractResponse } from "../types";
+import type { RichResponse, Evidence } from "../types";
 
 interface Span {
   start: number;
@@ -7,47 +7,45 @@ interface Span {
   kind: "term" | "risk";
 }
 
-// The flat API no longer sends evidence offsets, so we locate each extracted
-// string in the submitted note by case-insensitive substring search. Risk terms
-// are drawn on top in a warmer color. Longer terms are matched first so a term
-// isn't swallowed by a shorter overlapping one.
-function findSpans(note: string, result: ExtractResponse): Span[] {
+// Highlighting is driven by the backend-VALIDATED evidence offsets. Every
+// grounded fact carries an `evidence` span; when the validator located it
+// exactly it also carries {start,end} in the note's index space, which we use
+// directly. Only when offsets are absent (a fuzzy-matched span) do we fall back
+// to a case-insensitive substring search for that evidence text. This means the
+// UI highlights what the backend actually accepted, not what a naive re-search
+// of the extracted term happens to find.
+function findSpans(note: string, result: RichResponse): Span[] {
   const lower = note.toLowerCase();
+  const taken: boolean[] = new Array(note.length).fill(false);
+  const spans: Span[] = [];
 
-  const terms: Array<{ text: string; kind: Span["kind"] }> = [];
-  const push = (t: string | null, kind: Span["kind"]) => {
-    if (t && t.trim()) terms.push({ text: t.trim(), kind });
+  const claim = (start: number, end: number, kind: Span["kind"]): boolean => {
+    if (start < 0 || end > note.length || start >= end) return false;
+    for (let i = start; i < end; i++) if (taken[i]) return false;
+    for (let i = start; i < end; i++) taken[i] = true;
+    spans.push({ start, end, kind });
+    return true;
   };
 
-  if (result.chief_complaint) push(result.chief_complaint, "term");
-  result.symptoms.forEach((t) => push(t, "term"));
-  result.diagnosis.forEach((t) => push(t, "term"));
-  result.medical_history.forEach((t) => push(t, "term"));
-  result.procedures.forEach((t) => push(t, "term"));
-  result.medications.forEach((m) => push(m.name, "term"));
-  result.risk_indicators.forEach((t) => push(t, "risk"));
-
-  terms.sort((a, b) => b.text.length - a.text.length);
-
-  const spans: Span[] = [];
-  const taken: boolean[] = new Array(note.length).fill(false);
-
-  for (const { text, kind } of terms) {
-    const needle = text.toLowerCase();
-    let from = 0;
-    while (true) {
-      const idx = lower.indexOf(needle, from);
-      if (idx === -1) break;
-      const end = idx + needle.length;
-      let free = true;
-      for (let i = idx; i < end; i++) if (taken[i]) { free = false; break; }
-      if (free) {
-        for (let i = idx; i < end; i++) taken[i] = true;
-        spans.push({ start: idx, end, kind });
-      }
-      from = idx + needle.length;
+  const place = (ev: Evidence | undefined, kind: Span["kind"]) => {
+    if (!ev || !ev.text) return;
+    // 1) exact offsets from the validator
+    if (ev.start != null && ev.end != null && note.slice(ev.start, ev.end)) {
+      if (claim(ev.start, ev.end, kind)) return;
     }
-  }
+    // 2) fallback: locate the validated evidence text (not the extracted term)
+    const idx = lower.indexOf(ev.text.toLowerCase());
+    if (idx !== -1) claim(idx, idx + ev.text.length, kind);
+  };
+
+  // risk spans first (drawn on top, warmer color), then facts.
+  result.risk_indicators.forEach((r) => place(r.evidence, "risk"));
+  if (result.chief_complaint) place(result.chief_complaint.evidence, "term");
+  result.symptoms.forEach((f) => place(f.evidence, "term"));
+  result.diagnosis.forEach((f) => place(f.evidence, "term"));
+  result.medical_history.forEach((f) => place(f.evidence, "term"));
+  result.procedures.forEach((f) => place(f.evidence, "term"));
+  result.medications.forEach((m) => place(m.evidence, "term"));
 
   return spans.sort((a, b) => a.start - b.start);
 }
@@ -57,7 +55,7 @@ export default function HighlightedNote({
   result,
 }: {
   note: string;
-  result: ExtractResponse;
+  result: RichResponse;
 }) {
   const parts = useMemo(() => {
     const spans = findSpans(note, result);

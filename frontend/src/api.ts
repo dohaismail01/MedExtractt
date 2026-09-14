@@ -1,4 +1,4 @@
-import type { ExtractRequest, ExtractResponse } from "./types";
+import type { ExtractRequest, ExtractResponse, RichResponse } from "./types";
 
 const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
@@ -14,10 +14,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function extract(req: ExtractRequest): Promise<ExtractResponse> {
+async function postExtract<T>(path: string, req: ExtractRequest): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/extract`, {
+    res = await fetch(`${API_URL}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
@@ -47,7 +47,17 @@ export async function extract(req: ExtractRequest): Promise<ExtractResponse> {
     );
   }
 
-  return (await res.json()) as ExtractResponse;
+  return (await res.json()) as T;
+}
+
+// Flat brief schema (assignment contract).
+export function extract(req: ExtractRequest): Promise<ExtractResponse> {
+  return postExtract<ExtractResponse>("/extract", req);
+}
+
+// Rich model with validated evidence + status + ICD-10 resolution paths (UI).
+export function extractRich(req: ExtractRequest): Promise<RichResponse> {
+  return postExtract<RichResponse>("/extract/rich", req);
 }
 
 export async function health(): Promise<Record<string, unknown>> {

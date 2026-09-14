@@ -128,7 +128,8 @@ class RunMeta(BaseModel):
     prompt_version: str
     model: str
     repair_attempts: int
-    unsupported_dropped: int
+    unsupported_dropped: int         # facts dropped at grounding (both reasons)
+    incoherent_dropped: int          # subset: evidence located but did not support the fact
     icd10_tool_calls: int
     latency_ms: int
 ```
@@ -163,13 +164,31 @@ note ─▶ extract ─▶ validate ─┬─(fail)─▶ repair ─▶ validate
 
 **Layer A — structural.** Parse JSON, coerce through Pydantic. On failure, collect a compact error list (`loc: msg`) for the repair prompt.
 
-**Layer B — evidence grounding.** For each fact:
+**Layer B — evidence grounding.** Two steps per fact; a fact must pass both.
+
+*Step 1 — location (evidence is in the note):*
 1. Normalize note and span (lowercase, collapse whitespace, strip punctuation runs).
 2. Exact substring match → record `start`/`end` into the original note's index space.
 3. If no exact match, try a fuzzy match (`rapidfuzz.partial_ratio ≥ 90`). Accept but mark in meta.
-4. Otherwise **drop the fact**, increment `unsupported_dropped`, and log the term (not the note).
+4. Otherwise **drop the fact** (`evidence_not_found`).
 
-Grounding failures do **not** trigger repair — they are silent quality signals measured in eval. Only structural failures trigger repair.
+*Step 2 — coherence (evidence supports the fact):* locating the span is
+**necessary but not sufficient**. Evidence "Patient reports cough." exists in
+the note, but it does not support a diagnosis of "pneumonia". So we also require
+the fact's content tokens to be covered by the evidence text: the fraction of
+the fact's content words present in the evidence (exact / shared-stem / fuzzy
+token match) must be ≥ `COHERENCE_MIN_COVERAGE` (default 0.5). A fact that
+locates but fails coherence is **dropped** (`incoherent`) and counted in
+`incoherent_dropped` (a subset of `unsupported_dropped`).
+
+Honest limitation: lexical coverage cannot *prove* medical truth. It enforces a
+necessary condition and **conservatively rejects** when it is not met, rather
+than accepting an unsupported fact. Synonym/abbreviation mismatches (text
+"atrial fibrillation", evidence "afib") are therefore also dropped — a
+deliberate false-negative bias, quantified by the grounding-robustness eval.
+
+Grounding failures (either step) do **not** trigger repair — they are silent
+quality signals measured in eval. Only structural failures trigger repair.
 
 ### 3.3 `repair.py`
 - Max attempts: `MAX_REPAIR_ATTEMPTS` (default **2**).
@@ -230,10 +249,17 @@ term
 POST /extract
   body: { "note": str, "include_icd10": bool = true, "include_summary": bool = true }
   200:  brief flat schema (see below)
+  413:  note exceeds byte cap
   422:  { "error": "validation_failed", "details": [...] }
+  502:  { "error": "llm_error" }        # provider rejected / errored
   504:  { "error": "llm_timeout" }
 
-GET  /health   → { status, model, prompt_version, disclaimer, ... }
+POST /extract/rich   → same body; 200 returns the full internal MedExtractResponse
+  (each fact keeps `status` + grounded `evidence` offsets; each ICD-10 suggestion
+  keeps `confidence`, `needs_review`, `resolution_path`). Same error codes.
+  Consumed by the UI so it displays validated evidence rather than re-searching.
+
+GET  /health   → { status, model, prompt_version, disclaimer, ... }   (no LLM call)
 ```
 
 **Output contract (decision, 2026-09):** the `/extract` response conforms to the
@@ -258,7 +284,15 @@ not emitted by the API.
 
 ## 6. Evaluation (`eval/`)
 
-Offline, on a held-out annotated set. `run_eval.py` takes `--prompt-version`, `--config`, `--limit` and writes a timestamped JSON + Markdown report to `eval/reports/`.
+Offline. Three harnesses (see `eval/README.md`):
+- `run_eval.py` — full pipeline over a dataset. On the real unlabelled HF notes it
+  reports label-free metrics only; on `datasets/labeled_mini.jsonl` (30
+  author-constructed, provenance-flagged notes with gold labels) it also reports
+  P/R/F1. Writes a timestamped JSON + Markdown report to `eval/reports/`.
+- `grounding_eval.py` — grounding-robustness: feeds crafted supported/unsupported
+  facts straight into `ground()` and reports rejection/retention rate and
+  false-accept/false-reject counts. This is the direct anti-hallucination metric.
+- `compare_prompts.py` — V1→Final on the same dataset (needs a real LLM to differ).
 
 **Extraction metrics** — per field and micro-averaged:
 - Precision / Recall / F1 (match = normalized text equality + correct `status`)

@@ -51,5 +51,11 @@ def run_extract_validated(
             attempts += 1
             raw = _run_repair(client, raw, last_errors)
 
-    rep = ground(note, flat, cfg.fuzzy_grounding_threshold)
+    rep = ground(
+        note,
+        flat,
+        cfg.fuzzy_grounding_threshold,
+        min_coverage=cfg.coherence_min_coverage,
+        token_fuzz=cfg.coherence_token_fuzz,
+    )
     return ExtractOutcome(grounding=rep, repair_attempts=attempts)

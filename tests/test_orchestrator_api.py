@@ -105,3 +105,85 @@ def test_api_include_flags():
     r = client.post("/extract", json={"note": "cough", "include_icd10": False, "include_summary": False})
     body = r.json()
     assert body["icd10_codes"] == [] and body["summary"] is None
+
+
+# --- PRIORITY 8: API contract edge cases -------------------------------------
+def test_api_note_too_large_413():
+    big = "cough. " * 20000  # exceeds the 50 KB cap
+    r = client.post("/extract", json={"note": big})
+    assert r.status_code == 413
+
+
+def test_api_malformed_request_422():
+    # missing required "note" field -> FastAPI/pydantic request validation
+    r = client.post("/extract", json={"include_icd10": True})
+    assert r.status_code == 422
+
+
+def test_api_llm_timeout_504(monkeypatch):
+    from medextract.api import routes
+    from medextract.llm.base import LLMTimeout
+
+    def boom(*a, **k):
+        raise LLMTimeout("timed out")
+
+    monkeypatch.setattr(routes, "run", boom)
+    r = client.post("/extract", json={"note": "cough and fever"})
+    assert r.status_code == 504
+    assert r.json()["detail"]["error"] == "llm_timeout"
+
+
+def test_api_extraction_failed_422(monkeypatch):
+    from medextract.api import routes
+    from medextract.schemas import ExtractionFailed
+
+    def boom(*a, **k):
+        raise ExtractionFailed(["still invalid after repair"])
+
+    monkeypatch.setattr(routes, "run", boom)
+    r = client.post("/extract", json={"note": "cough"})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert detail["error"] == "validation_failed" and detail["details"]
+
+
+def test_api_successful_extraction_200():
+    r = client.post("/extract", json={"note": "Cough and fever. Diagnosis pneumonia."})
+    assert r.status_code == 200
+
+
+def test_api_extract_rich_exposes_evidence_and_status():
+    r = client.post("/extract/rich", json={"note": NOTE})
+    assert r.status_code == 200
+    body = r.json()
+    # rich response keeps status + grounded evidence offsets (unlike flat /extract)
+    sym = body["symptoms"][0]
+    assert "status" in sym and "evidence" in sym
+    assert sym["evidence"]["text"]
+    # ICD-10 suggestions keep confidence + resolution_path
+    assert body["icd10_codes"]
+    c = body["icd10_codes"][0]
+    assert "confidence" in c and "resolution_path" in c and "needs_review" in c
+    # evidence offsets, where present, index the original note
+    if sym["evidence"]["start"] is not None:
+        s, e = sym["evidence"]["start"], sym["evidence"]["end"]
+        assert NOTE[s:e].lower() == sym["evidence"]["text"].lower()
+
+
+def test_api_extract_rich_drops_negated_from_present():
+    r = client.post("/extract/rich", json={"note": "Patient denies fever. Reports cough."})
+    body = r.json()
+    fever = [s for s in body["symptoms"] if s["text"] == "fever"]
+    assert fever and fever[0]["status"] == "negated"  # kept, but marked negated
+
+
+def test_health_works_without_llm(monkeypatch):
+    # /health must not invoke the LLM client at all
+    from medextract.llm import base
+
+    def fail(*a, **k):
+        raise AssertionError("/health must not construct an LLM client")
+
+    monkeypatch.setattr(base, "get_client", fail)
+    r = client.get("/health")
+    assert r.status_code == 200 and r.json()["status"] == "ok"

@@ -97,7 +97,7 @@ Keeping downstream stages separate prevents the coding or summary stages from in
 
 - **LLM:** clinical language varies significantly, while a large labeled dataset for a custom extractor is not available. A strong instruction-tuned LLM provides a practical extraction approach.
 - **Validation:** ensures malformed or inconsistent output is caught before downstream processing.
-- **Evidence grounding:** links extracted facts to the original note, allowing unsupported extractions to be detected and measured.
+- **Evidence grounding (two steps):** each fact's evidence must (1) be locatable in the note and (2) actually *support* the fact — the fact's content words must be covered by the evidence, so an in-note but unrelated span (e.g. citing "Patient reports cough." for a diagnosis of "pneumonia") is rejected. Grounding conservatively drops facts it cannot support, and both drop reasons are counted so remaining hallucination is measured, not assumed.
 - **Separate ICD-10 agent:** clinical terms may be abbreviated or different from formal coding terminology. A bounded search agent can try alternative searches while keeping coding separate from clinical extraction.
 
 ## 5. ICD-10 Agent
