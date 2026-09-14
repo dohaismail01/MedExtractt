@@ -83,6 +83,19 @@ def test_api_empty_note_422():
     assert r.json()["detail"]["error"] == "validation_failed"
 
 
+def test_api_llm_error_returns_502(monkeypatch):
+    from medextract.api import routes
+    from medextract.llm.base import LLMError
+
+    def boom(*a, **k):
+        raise LLMError("LLM HTTP 400: bad request")
+
+    monkeypatch.setattr(routes, "run", boom)
+    r = client.post("/extract", json={"note": "cough and fever"})
+    assert r.status_code == 502
+    assert r.json()["detail"]["error"] == "llm_error"
+
+
 def test_api_redact():
     r = client.post("/redact", json={"text": "call 555-123-4567"})
     assert r.status_code == 200 and "555-123-4567" not in r.json()["redacted"]

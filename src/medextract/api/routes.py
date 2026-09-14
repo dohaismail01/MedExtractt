@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..brief import to_brief
 from ..config import settings
-from ..llm.base import LLMTimeout
+from ..llm.base import LLMError, LLMTimeout
 from ..orchestrator import run
 from ..safety import DISCLAIMER, LogSafeNote, NoteValidationError, redact_phi
 from ..schemas import MedExtractResponse, ExtractionFailed
@@ -80,6 +80,11 @@ def extract(req: ExtractRequest, _: None = Depends(require_api_key)):
                             detail={"error": "validation_failed", "details": e.details})
     except LLMTimeout:
         raise HTTPException(status_code=504, detail={"error": "llm_timeout"})
+    except LLMError as e:
+        # provider rejected the request or returned an error (e.g. a transient
+        # 400/5xx or rate limit) — surface a clean 502 rather than a raw 500.
+        logger.warning("llm_error: %s", e)
+        raise HTTPException(status_code=502, detail={"error": "llm_error"})
 
     # The API returns the assignment's exact flat schema (see medextract/brief.py).
     # The safety disclaimer is surfaced via GET /health and the UI, not inside the

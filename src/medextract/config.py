@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     llm_base_url: str = Field(default="", alias="MEDEXTRACT_LLM_BASE_URL")
     llm_api_key: str = Field(default="", alias="MEDEXTRACT_LLM_API_KEY")
     llm_timeout_s: float = Field(default=30.0, alias="MEDEXTRACT_LLM_TIMEOUT")
+    # Output-token budget. Reasoning models (e.g. gpt-oss) spend heavily on hidden
+    # reasoning; without headroom the JSON `content` can come back empty on long
+    # notes. Keep this generous.
+    llm_max_tokens: int = Field(default=8192, alias="MEDEXTRACT_LLM_MAX_TOKENS")
 
     # --- Prompts / pipeline ---
     prompt_version: str = Field(default="final", alias="MEDEXTRACT_PROMPT_VERSION")
