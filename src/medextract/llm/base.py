@@ -1,8 +1,8 @@
 """LLMClient protocol + factory (SPEC.md §8).
 
 The client is an adapter: pipeline code depends only on ``LLMClient.complete``.
-A real provider is required (openai_compat or ollama); the test-suite injects a
-mocked client so it never makes a network call.
+A hosted OpenAI-compatible API (openai_compat, e.g. Groq GPT-OSS) is required;
+the test-suite injects a mocked client so it never makes a network call.
 """
 
 from __future__ import annotations
@@ -35,8 +35,4 @@ def get_client(cfg: Settings | None = None) -> LLMClient:
         from .openai_compat import OpenAICompatClient
 
         return OpenAICompatClient(cfg)
-    if cfg.llm_provider == "ollama":
-        from .ollama import OllamaClient
-
-        return OllamaClient(cfg)
     raise LLMError(f"unknown LLM provider: {cfg.llm_provider!r}")

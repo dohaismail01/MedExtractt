@@ -18,10 +18,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     # --- LLM ---
-    # A real instruction-tuned model is required; extraction runs on it. Configure
-    # a provider + model + base URL via env (see .env.example). There is no offline
-    # heuristic provider; tests inject a mocked client instead.
-    llm_provider: Literal["openai_compat", "ollama"] = Field(
+    # Extraction runs on a hosted, OpenAI-compatible chat API (e.g. Groq GPT-OSS).
+    # Configure model + base URL + key via env (see .env.example). There is no
+    # local or offline provider; tests inject a mocked client instead.
+    llm_provider: Literal["openai_compat"] = Field(
         default="openai_compat", alias="MEDEXTRACT_LLM_PROVIDER"
     )
     model: str = Field(default="", alias="MEDEXTRACT_MODEL")

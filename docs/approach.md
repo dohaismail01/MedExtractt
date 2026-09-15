@@ -189,7 +189,7 @@ No performance results are claimed yet; they will be measured after implementati
 - Python
 - FastAPI
 - Pydantic
-- LLM: candidate models include Llama 3.3 70B, Qwen 2.5 72B, and smaller local models through Ollama.
+- LLM: a hosted OpenAI-compatible chat API (e.g. Groq GPT-OSS). No local/offline model.
 - Agent: custom tool-calling loop for ICD-10 search and validation.
 
 The final model will be selected based on extraction quality, structured-output reliability, latency, available resources, and API limits.

@@ -54,8 +54,8 @@ information** and suggest **unvalidated codes**. MedExtract addresses this by:
 
 **AI / LLM**
 - Pluggable provider architecture (swap models without touching pipeline code)
-- OpenAI-compatible provider (e.g. **Groq / GPT-OSS**) or local **Ollama** — a real
-  instruction-tuned model is required (there is no offline heuristic provider)
+- Hosted **OpenAI-compatible** API (e.g. **Groq / GPT-OSS**) — a real
+  instruction-tuned model is required (no local or offline provider)
 - Versioned prompts (V1 → V2 → V3 → Final) with a documented iteration rationale
 
 **ICD-10 (bonus)**
@@ -208,7 +208,7 @@ status, and ICD-10 audit trail for the UI.
 | Language | Python 3.11+ |
 | Backend | FastAPI + Uvicorn |
 | Validation | Pydantic v2 |
-| LLM providers | OpenAI-compatible (Groq/GPT-OSS), Ollama (real LLM required) |
+| LLM provider | OpenAI-compatible API (Groq/GPT-OSS) — real LLM required |
 | Fuzzy matching | RapidFuzz |
 | ICD-10 lookup | NLM online API (online-only; no local fallback) |
 | HTTP client | httpx |
@@ -225,7 +225,7 @@ MEDExtract/
 │   ├── api/            # FastAPI app + routes
 │   ├── pipeline/       # extract, validate, repair, summary, risk
 │   ├── icd10/          # source (NLM online, no local fallback), tools, bounded agent
-│   ├── llm/            # provider adapters: openai_compat / ollama
+│   ├── llm/            # provider adapter: openai_compat (hosted GPT API)
 │   ├── prompts/        # extraction_v1..final.md, repair.md, summary.md + CHANGELOG
 │   ├── schemas.py      # Pydantic models (single source of truth)
 │   ├── brief.py        # flatten internal model → flat response schema
@@ -369,8 +369,8 @@ Implemented protections:
 - React UI shows fact → status → validated evidence, full ICD-10 provenance, a
   separate "Denied / ruled out" section, and **Save JSON** — negated / family-history
   facts never render as a positive diagnosis
-- **Real-LLM-only** extraction: OpenAI-compatible (Groq/GPT-OSS) or Ollama
-  provider adapters; prompts V1→Final. No offline heuristic provider — the test
+- **Real-LLM-only** extraction: a hosted OpenAI-compatible API (Groq/GPT-OSS)
+  provider adapter; prompts V1→Final. No local or offline provider — the test
   suite injects a mocked client instead
 - **Online-only ICD-10** coding (NLM ICD-10-CM), no local database or fallback;
   confidence-based abstention; procedures abstain (no free online ICD-10-PCS)
