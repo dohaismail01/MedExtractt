@@ -71,3 +71,23 @@ def test_timeout_maps_to_llmtimeout(monkeypatch):
     _patch_sequence(monkeypatch, [httpx.TimeoutException("slow")])
     with pytest.raises(LLMTimeout):
         oc.OpenAICompatClient(_cfg()).complete("sys", "user")
+
+
+def test_transport_error_is_retried_then_succeeds(monkeypatch):
+    # "Server disconnected without sending a response" is a transport error, not a
+    # status code — it must be retried, not surfaced immediately.
+    calls = _patch_sequence(monkeypatch, [
+        httpx.RemoteProtocolError("Server disconnected without sending a response."),
+        _resp(200, _OK),
+    ])
+    out = oc.OpenAICompatClient(_cfg()).complete("sys", "user")
+    assert out == '{"symptoms": []}'
+    assert calls["n"] == 2
+
+
+def test_transport_error_gives_up_after_max_retries(monkeypatch):
+    calls = _patch_sequence(monkeypatch, [httpx.ConnectError("reset")])
+    with pytest.raises(LLMError) as ei:
+        oc.OpenAICompatClient(_cfg(llm_max_retries=2)).complete("sys", "user")
+    assert "attempts" in str(ei.value)
+    assert calls["n"] == 3  # initial + 2 retries

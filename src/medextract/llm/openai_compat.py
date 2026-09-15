@@ -34,20 +34,31 @@ class OpenAICompatClient:
             raise LLMError("openai_compat requires MEDEXTRACT_LLM_BASE_URL and MEDEXTRACT_MODEL")
 
     def _post(self, url: str, payload: dict, headers: dict) -> httpx.Response:
-        """POST with bounded backoff on retryable statuses. Honors Retry-After
-        when present, otherwise exponential backoff capped at llm_retry_max_delay.
-        Raises LLMTimeout on socket timeout; returns the final Response otherwise
-        (the caller still calls raise_for_status())."""
+        """POST with bounded backoff on transient failures:
+          * retryable HTTP status (429 / 5xx) — honoring Retry-After when present;
+          * transient transport errors (e.g. "server disconnected", connection
+            reset) — these are NOT status codes, so they are retried here too.
+        Backoff is exponential, capped at llm_retry_max_delay. A socket timeout
+        still maps to LLMTimeout (no retry, so the 504 contract is unchanged).
+        Returns the final Response (the caller calls raise_for_status())."""
         delay = self.cfg.llm_retry_base_delay
         last: httpx.Response | None = None
         for attempt in range(self.cfg.llm_max_retries + 1):
+            last_attempt = attempt >= self.cfg.llm_max_retries
             try:
                 resp = httpx.post(url, json=payload, headers=headers,
                                   timeout=self.cfg.llm_timeout_s)
             except httpx.TimeoutException as e:
                 raise LLMTimeout(str(e)) from e
+            except httpx.TransportError as e:
+                # transient network/protocol error (connection dropped, reset, ...)
+                if last_attempt:
+                    raise LLMError(f"LLM request failed after {attempt + 1} attempts: {e}") from e
+                time.sleep(min(delay, self.cfg.llm_retry_max_delay))
+                delay *= 2
+                continue
             last = resp
-            if resp.status_code in self._RETRYABLE and attempt < self.cfg.llm_max_retries:
+            if resp.status_code in self._RETRYABLE and not last_attempt:
                 wait = _retry_after_seconds(resp)
                 wait = min(wait if wait is not None else delay, self.cfg.llm_retry_max_delay)
                 time.sleep(wait)

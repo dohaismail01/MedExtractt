@@ -34,8 +34,39 @@ urgency, and selected ICD-10 codes.
 > in-vocabulary cases — a floor for behavior, **not** a claim of real-world
 > clinical accuracy. Run the same file against a real LLM to score that model.
 
-Latest stub baseline (reproducible): precision 1.0, recall ~0.78, F1 ~0.88,
-ICD-10 top-1 1.0, urgency accuracy ~0.71.
+### Recorded results on `labeled_mini.jsonl`
+
+Two runs of the same 30 notes: the offline `stub` (reproducible, deterministic)
+and a real LLM (Groq `openai/gpt-oss-20b`, `ICD10_BACKEND=local_sqlite`, so ICD-10
+is scored against the same local gold). The real run paces itself under Groq's
+free-tier tokens-per-minute cap via the client's retry/backoff.
+
+| metric | stub | Groq gpt-oss-20b |
+|---|---|---|
+| precision | 1.000 | 0.819 |
+| recall | 0.778 | 0.728 |
+| F1 | 0.875 | 0.771 |
+| unsupported-extraction rate | 0.000 | 0.069 |
+| incoherent-extraction rate | 0.000 | 0.000 |
+| schema first-pass validity | 1.000 | 0.967 |
+| repair rate | 0.000 | 0.033 |
+| ICD-10 top-1 | 1.000 | 0.889 |
+| ICD-10 abstention | 0.000 | 0.111 |
+| ICD-10 invalid-code rate | 0.000 | 0.000 |
+| urgency accuracy | 0.714 | 0.714 |
+| latency p50 / p95 (ms) | ~1 / ~2 | 4265 / 54333 |
+| failed notes | 0 | 0 |
+
+Reading: on a real model, extraction F1 is ~0.77 and the pipeline is genuinely
+exercised — grounding drops ~7% of facts as unsupported (coherence drops none
+here), one note needs a repair and recovers, and the ICD-10 agent codes at 0.889
+top-1 with 0.111 abstention and **0 invalid codes** (it abstains, never guesses).
+The high p95 latency is the rate-limit backoff, not per-call compute.
+
+> Caveat: `labeled_mini` is a 30-note, author-constructed, in-vocabulary set — a
+> defensible **floor** on behavior, **not** a real-world clinical-accuracy claim.
+> Numbers will vary run to run with a hosted model; regenerate with the command
+> above.
 
 ## 3. Grounding robustness (the anti-hallucination metric)
 
