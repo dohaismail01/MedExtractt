@@ -1,9 +1,8 @@
 """Offline evaluation harness (SPEC.md §6).
 
 Runs the full pipeline over a JSONL gold set and writes a timestamped JSON +
-Markdown report to eval/reports/. Works with whichever provider is configured
-(the deterministic stub by default), so the same command measures any prompt or
-model.
+Markdown report to eval/reports/. Works with whichever real LLM provider is
+configured, so the same command measures any prompt or model.
 
 The eval set is the real HuggingFace ``chenhaodev/medical-dialogs-notes`` clinical
 notes (no synthetic/generated data). Generate it first with

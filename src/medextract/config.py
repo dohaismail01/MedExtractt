@@ -1,9 +1,8 @@
 """Env-driven configuration (SPEC.md §8) via pydantic-settings.
 
-All values have defaults so the system runs with zero configuration (using the
-deterministic ``stub`` LLM provider, which keeps tests offline). Set a real
-provider/model to switch to an instruction-tuned LLM without touching pipeline
-code (the client is an adapter).
+A real LLM provider/model/base URL must be configured (see .env.example); the
+client is an adapter, so switching models never touches pipeline code. There is
+no offline provider — tests inject a mocked client instead.
 """
 
 from __future__ import annotations
@@ -19,11 +18,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     # --- LLM ---
-    # "stub" -> deterministic offline extractor (default; keeps tests hermetic)
-    llm_provider: Literal["stub", "ollama", "openai_compat"] = Field(
-        default="stub", alias="MEDEXTRACT_LLM_PROVIDER"
+    # A real instruction-tuned model is required; extraction runs on it. Configure
+    # a provider + model + base URL via env (see .env.example). There is no offline
+    # heuristic provider; tests inject a mocked client instead.
+    llm_provider: Literal["openai_compat", "ollama"] = Field(
+        default="openai_compat", alias="MEDEXTRACT_LLM_PROVIDER"
     )
-    model: str = Field(default="stub-heuristic", alias="MEDEXTRACT_MODEL")
+    model: str = Field(default="", alias="MEDEXTRACT_MODEL")
     llm_base_url: str = Field(default="", alias="MEDEXTRACT_LLM_BASE_URL")
     llm_api_key: str = Field(default="", alias="MEDEXTRACT_LLM_API_KEY")
     llm_timeout_s: float = Field(default=30.0, alias="MEDEXTRACT_LLM_TIMEOUT")
@@ -72,10 +73,6 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="*", alias="MEDEXTRACT_ALLOWED_ORIGINS")
     redact_input: bool = Field(default=False, alias="MEDEXTRACT_REDACT_INPUT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-
-    @property
-    def llm_enabled(self) -> bool:
-        return self.llm_provider != "stub"
 
     @property
     def cors_origins(self) -> List[str]:

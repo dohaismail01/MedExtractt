@@ -25,3 +25,6 @@ eval/datasets/medical_dialogs_notes.jsonl
 # saved extraction outputs (may contain clinical text)
 outputs/
 json outputs/
+
+# test suite kept local, not tracked in the repo (still runnable via pytest)
+tests/

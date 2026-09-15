@@ -16,9 +16,8 @@ for: "keep the prompts and test results so the improvement can be demonstrated."
     python -m eval.compare_prompts
     python -m eval.compare_prompts --dataset eval/datasets/medical_dialogs_notes.jsonl --versions v1 v2 v3 final
 
-NOTE: meaningful differences between versions require a real LLM (e.g. Groq
-GPT-OSS). The offline ``stub`` provider ignores prompt text, so every version
-produces identical output — the harness will say so.
+NOTE: a real LLM is required (e.g. Groq GPT-OSS); extraction runs on the
+configured provider.
 """
 
 from __future__ import annotations
@@ -93,28 +92,17 @@ def write_comparison(reports: Dict[str, Dict], dataset: Path) -> Path:
     model = reports[versions[0]]["model"] if versions else "?"
     notes = reports[versions[0]]["notes"] if versions else 0
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    # The stub, not the model name, is what makes versions identical (it ignores
-    # the prompt). Detect it by provider so a stub run isn't mislabelled.
     provider = get_settings().llm_provider
-    stub = provider == "stub"
 
     md: List[str] = [
         "# Prompt iteration comparison (V1 -> V2 -> V3 -> Final)",
         "",
         f"- generated: {ts}",
         f"- dataset: `{dataset}` ({notes} notes)",
-        f"- provider: `{provider}`  ·  model: `{model if not stub else 'stub-heuristic'}`",
+        f"- provider: `{provider}`  ·  model: `{model}`",
         f"- per-note outputs: `eval/reports/prompt_runs/<version>.jsonl`",
         "",
     ]
-    if stub:
-        md += [
-            "> ⚠️ Run on the offline **stub** provider, which ignores prompt text — "
-            "all versions are identical here. Re-run with a real LLM "
-            "(`MEDEXTRACT_LLM_PROVIDER=openai_compat`, Groq GPT-OSS) to show the "
-            "actual prompt-driven improvement.",
-            "",
-        ]
 
     # metric table: rows = metrics, columns = versions
     md.append("| metric | " + " | ".join(versions) + " |")
@@ -153,10 +141,6 @@ def main() -> None:
     ap.add_argument("--versions", nargs="+", default=["v1", "v2", "v3", "final"])
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
-
-    if get_settings().llm_provider == "stub":
-        print("WARNING: provider is 'stub' — prompts are ignored; versions will be "
-              "identical. Set a real LLM to demonstrate improvement.\n")
 
     reports = compare(Path(args.dataset), args.versions, args.limit)
     md = write_comparison(reports, Path(args.dataset))

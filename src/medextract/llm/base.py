@@ -1,8 +1,8 @@
 """LLMClient protocol + factory (SPEC.md §8).
 
 The client is an adapter: pipeline code depends only on ``LLMClient.complete``.
-The ``stub`` provider is deterministic and offline so the test-suite and a
-zero-config run still exercise the whole pipeline.
+A real provider is required (openai_compat or ollama); the test-suite injects a
+mocked client so it never makes a network call.
 """
 
 from __future__ import annotations
@@ -39,6 +39,4 @@ def get_client(cfg: Settings | None = None) -> LLMClient:
         from .ollama import OllamaClient
 
         return OllamaClient(cfg)
-    from .stub import StubClient
-
-    return StubClient(cfg)
+    raise LLMError(f"unknown LLM provider: {cfg.llm_provider!r}")

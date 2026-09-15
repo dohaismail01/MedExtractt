@@ -27,7 +27,7 @@ internet; everything else is deterministic offline.
 | TC02 | `test_grounding_coherence.py`, `test_adversarial.py` |
 | TC03 | `test_status.py` (`test_*_not_a_positive_diagnosis`, `test_combined_*`), `test_grounding_coherence.py` |
 | TC04 | `test_status.py`, `test_adversarial.py` |
-| TC05 | `test_adversarial.py` (medication cases), stub extraction in `test_orchestrator_api.py` |
+| TC05 | `test_adversarial.py` (medication cases), mocked-LLM cases in `test_orchestrator_api.py` |
 | TC07 | `test_repair.py` |
 | TC08 | `test_risk_summary.py` |
 | TC09 | `test_icd10.py` (abstention / never-invents cases) |

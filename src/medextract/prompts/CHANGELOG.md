@@ -52,5 +52,4 @@ example ending with a populated `follow_up`.
 Run each version on the same held-out subset and compare extraction P/R/F1, the
 unsupported-extraction (grounding-drop) rate, and first-pass schema validity in
 `eval/reports/`. The report table is append-only so regressions stay visible.
-Requires a real LLM (e.g. Groq GPT-OSS); the offline `stub` provider ignores the
-prompt text, so it cannot show prompt-driven differences.
+Requires a real LLM (e.g. Groq GPT-OSS) — extraction runs on the configured model.

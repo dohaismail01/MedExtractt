@@ -1,7 +1,8 @@
 # Evaluation
 
-Three complementary harnesses. All run fully offline against the deterministic
-`stub` provider by default (set a real LLM to measure a real model).
+Three complementary harnesses. The extraction runs (1 and 2) require a real LLM
+configured via env (see `.env.example`); the grounding-robustness run (3) is
+fully offline (no LLM).
 
 ## 1. Label-free run (real, unlabelled notes)
 
@@ -36,30 +37,31 @@ urgency, and selected ICD-10 codes.
 
 ### Recorded results on `labeled_mini.jsonl`
 
-Two runs of the same 30 notes: the offline `stub` (reproducible, deterministic)
-and a real LLM (Groq `openai/gpt-oss-20b`). The real run paces itself under Groq's
-free-tier tokens-per-minute cap via the client's retry/backoff.
+A real-LLM run of the 30 notes (Groq `openai/gpt-oss-20b`). The run paces itself
+under Groq's free-tier tokens-per-minute cap via the client's retry/backoff.
 
-> Note: these numbers were recorded when ICD-10 used a local code set. ICD-10 is
-> now **online-only** (NLM), so re-running will query NLM live and the ICD-10
-> figures (top-1 / abstention) will differ and depend on connectivity; the
-> extraction metrics (P/R/F1, grounding) are unaffected by the ICD-10 backend.
+> Historical note: these figures were recorded when the project still shipped a
+> deterministic offline provider and a local ICD-10 code set — both since removed
+> (extraction is real-LLM-only; ICD-10 is online NLM). The ICD-10 figures below
+> came from the old local backend; re-running now queries NLM live, so ICD-10
+> top-1 / abstention will differ and depend on connectivity. Extraction metrics
+> (P/R/F1, grounding) are unaffected by the ICD-10 backend.
 
-| metric | stub | Groq gpt-oss-20b |
-|---|---|---|
-| precision | 1.000 | 0.819 |
-| recall | 0.778 | 0.728 |
-| F1 | 0.875 | 0.771 |
-| unsupported-extraction rate | 0.000 | 0.069 |
-| incoherent-extraction rate | 0.000 | 0.000 |
-| schema first-pass validity | 1.000 | 0.967 |
-| repair rate | 0.000 | 0.033 |
-| ICD-10 top-1 | 1.000 | 0.889 |
-| ICD-10 abstention | 0.000 | 0.111 |
-| ICD-10 invalid-code rate | 0.000 | 0.000 |
-| urgency accuracy | 0.714 | 0.714 |
-| latency p50 / p95 (ms) | ~1 / ~2 | 4265 / 54333 |
-| failed notes | 0 | 0 |
+| metric | Groq gpt-oss-20b |
+|---|---|
+| precision | 0.819 |
+| recall | 0.728 |
+| F1 | 0.771 |
+| unsupported-extraction rate | 0.069 |
+| incoherent-extraction rate | 0.000 |
+| schema first-pass validity | 0.967 |
+| repair rate | 0.033 |
+| ICD-10 top-1 (old local backend) | 0.889 |
+| ICD-10 abstention (old local backend) | 0.111 |
+| ICD-10 invalid-code rate | 0.000 |
+| urgency accuracy | 0.714 |
+| latency p50 / p95 (ms) | 4265 / 54333 |
+| failed notes | 0 |
 
 Reading: on a real model, extraction F1 is ~0.77 and the pipeline is genuinely
 exercised — grounding drops ~7% of facts as unsupported (coherence drops none
@@ -99,5 +101,5 @@ it at 1.0 / 1.0 on the curated set.
 python -m eval.compare_prompts             # V1 -> V2 -> V3 -> Final, same dataset
 ```
 
-The offline stub ignores prompt text, so versions are identical under it (the
-harness says so); meaningful deltas require a real LLM.
+Requires a real LLM configured via env; each version runs on the same dataset so
+prompt-driven deltas are visible.

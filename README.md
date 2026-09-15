@@ -54,8 +54,8 @@ information** and suggest **unvalidated codes**. MedExtract addresses this by:
 
 **AI / LLM**
 - Pluggable provider architecture (swap models without touching pipeline code)
-- OpenAI-compatible provider (e.g. **Groq / GPT-OSS**), local **Ollama**, and a
-  deterministic offline **stub** used only to keep tests hermetic
+- OpenAI-compatible provider (e.g. **Groq / GPT-OSS**) or local **Ollama** — a real
+  instruction-tuned model is required (there is no offline heuristic provider)
 - Versioned prompts (V1 → V2 → V3 → Final) with a documented iteration rationale
 
 **ICD-10 (bonus)**
@@ -105,7 +105,7 @@ never see the raw note (risk matches its lexicon against validated evidence).
 | **Validation & grounding** | Parse → Pydantic → locate each fact's evidence in the note | `src/medextract/pipeline/validate.py` |
 | **Repair** | Bounded re-prompt on structural failure, else fail cleanly | `src/medextract/pipeline/repair.py` |
 | **Summary & risk** | Grounded summary; deterministic lexicon-based risk/urgency | `src/medextract/pipeline/{summary,risk}.py` |
-| **ICD-10** | Bounded agent + tools over a swappable source (NLM online / local) | `src/medextract/icd10/` |
+| **ICD-10** | Bounded agent + tools over the NLM online source (online-only, no local) | `src/medextract/icd10/` |
 | **Safety** | Redaction, note validation, disclaimer | `src/medextract/safety.py` |
 | **Output shaping** | Flatten internal model → the flat response schema | `src/medextract/brief.py` |
 | **Frontend** | React UI: paste a note, see fields, meds, ICD-10, urgency, highlights | `frontend/` |
@@ -208,7 +208,7 @@ status, and ICD-10 audit trail for the UI.
 | Language | Python 3.11+ |
 | Backend | FastAPI + Uvicorn |
 | Validation | Pydantic v2 |
-| LLM providers | OpenAI-compatible (Groq/GPT-OSS), Ollama, offline stub |
+| LLM providers | OpenAI-compatible (Groq/GPT-OSS), Ollama (real LLM required) |
 | Fuzzy matching | RapidFuzz |
 | ICD-10 lookup | NLM online API (online-only; no local fallback) |
 | HTTP client | httpx |
@@ -225,7 +225,7 @@ MEDExtract/
 │   ├── api/            # FastAPI app + routes
 │   ├── pipeline/       # extract, validate, repair, summary, risk
 │   ├── icd10/          # source (NLM online, no local fallback), tools, bounded agent
-│   ├── llm/            # provider adapters: stub / ollama / openai_compat
+│   ├── llm/            # provider adapters: openai_compat / ollama
 │   ├── prompts/        # extraction_v1..final.md, repair.md, summary.md + CHANGELOG
 │   ├── schemas.py      # Pydantic models (single source of truth)
 │   ├── brief.py        # flatten internal model → flat response schema
@@ -284,27 +284,20 @@ pytest
 ## LLM Configuration
 
 The LLM provider is an adapter — configure it via environment variables (see
-[.env.example](.env.example)). Never commit real keys.
-
-**Offline (default):** the deterministic `stub` provider runs the whole pipeline
-with no key or network — used to keep tests and a zero-config run working. It
-ignores prompt text, so it is not the product path.
+[.env.example](.env.example)). Never commit real keys. A real instruction-tuned
+model is **required**; there is no offline heuristic provider. (The test suite
+injects a mocked client, so `pytest` still runs with no network.)
 
 **Groq (GPT-OSS) — OpenAI-compatible:**
 
 ```bash
 MEDEXTRACT_LLM_PROVIDER=openai_compat
-MEDEXTRACT_MODEL=openai/gpt-oss-20b        # or openai/gpt-oss-120b
+MEDEXTRACT_MODEL=openai/gpt-oss-20b        # or openai/gpt-oss-xb
 MEDEXTRACT_LLM_BASE_URL=https://api.groq.com/openai/v1
 MEDEXTRACT_LLM_API_KEY=...                 # your key
 ```
 
-**Ollama (local):**
 
-```bash
-MEDEXTRACT_LLM_PROVIDER=ollama
-MEDEXTRACT_MODEL=llama3.3
-```
 
 Other useful settings: `MEDEXTRACT_PROMPT_VERSION` (`v1|v2|v3|final`, default
 `final`). ICD-10 coding is online-only (NLM); there is no local backend.
@@ -333,19 +326,19 @@ Two further harnesses ship a labelled/curated set (see [eval/README.md](eval/REA
 
 ```bash
 # P/R/F1 on a 30-note, author-labelled subset (provenance-flagged, no PHI)
-MEDEXTRACT_LLM_PROVIDER=stub ICD10_BACKEND=local_sqlite \
-  python -m eval.run_eval --dataset eval/datasets/labeled_mini.jsonl
-# Anti-hallucination: rejection/retention of unsupported vs supported facts
+# needs a real LLM configured (see .env.example)
+python -m eval.run_eval --dataset eval/datasets/labeled_mini.jsonl
+# Anti-hallucination: rejection/retention of unsupported vs supported facts (offline)
 python -m eval.grounding_eval
 ```
 
-`grounding_eval` directly measures the fact↔evidence coherence gate; on the
-curated adversarial set it rejects 100% of unsupported facts while retaining
-100% of supported ones (locked by `tests/test_grounding_eval.py`).
+`grounding_eval` directly measures the fact↔evidence coherence gate (it feeds
+crafted facts straight into `ground()`, no LLM); on the curated adversarial set
+it rejects 100% of unsupported facts while retaining 100% of supported ones
+(locked by `tests/test_grounding_eval.py`).
 
-> Meaningful prompt-comparison numbers require a real LLM (the offline stub
-> ignores prompt text). Results are written to `eval/reports/` when you run the
-> commands above.
+> Extraction and prompt-comparison runs require a real LLM. Results are written
+> to `eval/reports/` when you run the commands above.
 
 ---
 
@@ -373,14 +366,16 @@ Implemented protections:
   coherence)** → bounded repair → summary + risk + ICD-10
 - Flat `/extract` (assignment schema) **and** `/extract/rich` (status + grounded
   evidence + ICD-10 resolution paths); FastAPI API; React frontend; CLI JSON export
-- React UI shows fact → status → validated evidence, and full ICD-10 provenance
-- Pluggable LLM providers (Groq/GPT-OSS, Ollama, stub); prompts V1→Final
-- Online NLM ICD-10 lookup with local offline fallback; confidence-based abstention
-- ICD-10-CM (diagnosis) **and** ICD-10-PCS (procedure) coding — PCS via a small
-  curated, verified reference; the agent abstains on procedures not in it
-- React UI: fact → status → validated evidence, ICD-10 provenance, and **Save JSON**
+- React UI shows fact → status → validated evidence, full ICD-10 provenance, a
+  separate "Denied / ruled out" section, and **Save JSON** — negated / family-history
+  facts never render as a positive diagnosis
+- **Real-LLM-only** extraction: OpenAI-compatible (Groq/GPT-OSS) or Ollama
+  provider adapters; prompts V1→Final. No offline heuristic provider — the test
+  suite injects a mocked client instead
+- **Online-only ICD-10** coding (NLM ICD-10-CM), no local database or fallback;
+  confidence-based abstention; procedures abstain (no free online ICD-10-PCS)
 - Grounding-robustness eval + 30-note labelled subset (P/R/F1) + prompt-comparison
-  harness; hermetic test suite (130 tests)
+  harness; hermetic test suite (127 tests, no network)
 
 **In progress / partial**
 - Prompt V1→Final comparison numbers (harness ready; needs a real-LLM run)
@@ -388,13 +383,11 @@ Implemented protections:
   controlled cases, not a claim of real-world clinical accuracy)
 - Coherence gate is lexical (necessary-condition, conservative-reject); it cannot
   prove semantic medical truth and drops genuine synonym/abbreviation matches
-
-- ICD-10-PCS coding covers a small curated procedure set; procedures outside it
-  abstain (correctly), so PCS breadth is limited by design
+- Procedures are left uncoded (ICD-10-PCS) — no free online PCS service
 
 **Planned**
 - Larger, independently-annotated evaluation set
-- Broader ICD-10-PCS coverage (and/or a full PCS backend)
+- An online (or licensed) ICD-10-PCS source so procedures can be coded
 - `mypy --strict` clean pass
 
 ---
