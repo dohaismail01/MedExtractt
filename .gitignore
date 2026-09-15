@@ -24,3 +24,4 @@ eval/datasets/medical_dialogs_notes.jsonl
 
 # saved extraction outputs (may contain clinical text)
 outputs/
+json outputs/
