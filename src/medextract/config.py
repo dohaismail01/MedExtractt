@@ -60,7 +60,9 @@ class Settings(BaseSettings):
         default=0.6, alias="ICD10_CONFIDENCE_THRESHOLD"
     )
     icd10_accept_threshold: float = Field(default=0.8, alias="ICD10_ACCEPT_THRESHOLD")
-    icd10_backend: Literal["local_sqlite", "nlm", "mcp"] = Field(
+    # The ICD-10 agent is online-only (NLM Clinical Table Search Service); there is
+    # no local backend or fallback. Kept as a field for /health visibility.
+    icd10_backend: Literal["nlm", "online"] = Field(
         default="nlm", alias="ICD10_BACKEND"
     )
 

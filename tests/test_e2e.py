@@ -1,9 +1,10 @@
 """PRIORITY 5 + 9 - deterministic end-to-end pipeline tests.
 
-Fully offline: the LLM is a ScriptedClient and the ICD-10 backend is the bundled
-local source (conftest forces ICD10_BACKEND=local_sqlite). These prove that only
-VALIDATED, grounded facts reach the summary, risk, and ICD-10 stages - and that a
-hallucinated fact removed at grounding cannot resurface anywhere downstream.
+Fully offline: the LLM is a ScriptedClient and the ICD-10 agent uses the injected
+FakeIcd10Source (conftest autouse fixture) instead of the real online service.
+These prove that only VALIDATED, grounded facts reach the summary, risk, and
+ICD-10 stages - and that a hallucinated fact removed at grounding cannot resurface
+anywhere downstream.
 """
 
 from medextract.brief import to_brief

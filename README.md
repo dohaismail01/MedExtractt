@@ -60,8 +60,10 @@ information** and suggest **unvalidated codes**. MedExtract addresses this by:
 
 **ICD-10 (bonus)**
 - Bounded, tool-using agent (`search_codes`, `lookup_code`, `validate_code`, `get_category`)
-- Default **online lookup** via the NLM Clinical Table Search Service, with a local
-  SQLite-FTS dataset as an offline fallback
+- **Online-only lookup** via the NLM Clinical Table Search Service (ICD-10-CM) —
+  no local code database and no offline fallback; if NLM is unreachable the agent
+  abstains rather than serving canned data
+- Procedures (ICD-10-PCS) abstain: there is no comparable free online PCS service
 - Confidence-based **abstention** (`code: null`, `needs_review: true`) instead of guessing
 
 **Safety**
@@ -160,10 +162,11 @@ Validated Clinical Term
 Code Suggestion  ──or──  Abstention (code: null, needs_review: true)
 ```
 
-By default it queries the live **NLM Clinical Table Search Service** (public US
-ICD-10-CM API, no key), falling back to a bundled local SQLite-FTS dataset when
-offline. This is **candidate coding assistance for clinician review**, not final
-medical coding.
+It queries the live **NLM Clinical Table Search Service** (public US ICD-10-CM
+API, no key) — **online-only, with no local database or offline fallback**. If
+the service is unreachable, the agent abstains (`code: null`, `needs_review:
+true`) rather than inventing or serving canned codes. This is **candidate coding
+assistance for clinician review**, not final medical coding.
 
 ---
 
@@ -207,7 +210,7 @@ status, and ICD-10 audit trail for the UI.
 | Validation | Pydantic v2 |
 | LLM providers | OpenAI-compatible (Groq/GPT-OSS), Ollama, offline stub |
 | Fuzzy matching | RapidFuzz |
-| ICD-10 lookup | NLM online API (default) / SQLite FTS (offline) |
+| ICD-10 lookup | NLM online API (online-only; no local fallback) |
 | HTTP client | httpx |
 | Frontend | React + TypeScript + Vite + Tailwind CSS |
 | Testing | Pytest |
@@ -221,7 +224,7 @@ MEDExtract/
 ├── src/medextract/
 │   ├── api/            # FastAPI app + routes
 │   ├── pipeline/       # extract, validate, repair, summary, risk
-│   ├── icd10/          # source (NLM online / SQLite FTS), tools, bounded agent
+│   ├── icd10/          # source (NLM online, no local fallback), tools, bounded agent
 │   ├── llm/            # provider adapters: stub / ollama / openai_compat
 │   ├── prompts/        # extraction_v1..final.md, repair.md, summary.md + CHANGELOG
 │   ├── schemas.py      # Pydantic models (single source of truth)
@@ -233,7 +236,6 @@ MEDExtract/
 ├── frontend/           # React + TypeScript + Vite UI
 ├── eval/               # prepare_hf_dataset, run_eval, compare_prompts, metrics
 ├── tests/              # test suite mirroring the package
-├── reference/          # local ICD-10-CM fallback data
 ├── docs/               # SPEC.md (build contract) + approach.md (design rationale)
 ├── pyproject.toml
 └── .env.example
@@ -305,7 +307,7 @@ MEDEXTRACT_MODEL=llama3.3
 ```
 
 Other useful settings: `MEDEXTRACT_PROMPT_VERSION` (`v1|v2|v3|final`, default
-`final`) and `ICD10_BACKEND` (`nlm` online, default, or `local_sqlite`).
+`final`). ICD-10 coding is online-only (NLM); there is no local backend.
 
 ---
 
@@ -374,8 +376,11 @@ Implemented protections:
 - React UI shows fact → status → validated evidence, and full ICD-10 provenance
 - Pluggable LLM providers (Groq/GPT-OSS, Ollama, stub); prompts V1→Final
 - Online NLM ICD-10 lookup with local offline fallback; confidence-based abstention
+- ICD-10-CM (diagnosis) **and** ICD-10-PCS (procedure) coding — PCS via a small
+  curated, verified reference; the agent abstains on procedures not in it
+- React UI: fact → status → validated evidence, ICD-10 provenance, and **Save JSON**
 - Grounding-robustness eval + 30-note labelled subset (P/R/F1) + prompt-comparison
-  harness; hermetic test suite (120 tests)
+  harness; hermetic test suite (130 tests)
 
 **In progress / partial**
 - Prompt V1→Final comparison numbers (harness ready; needs a real-LLM run)
@@ -384,9 +389,12 @@ Implemented protections:
 - Coherence gate is lexical (necessary-condition, conservative-reject); it cannot
   prove semantic medical truth and drops genuine synonym/abbreviation matches
 
+- ICD-10-PCS coding covers a small curated procedure set; procedures outside it
+  abstain (correctly), so PCS breadth is limited by design
+
 **Planned**
-- ICD-10-PCS procedure coding (procedures currently abstain)
 - Larger, independently-annotated evaluation set
+- Broader ICD-10-PCS coverage (and/or a full PCS backend)
 - `mypy --strict` clean pass
 
 ---
@@ -394,8 +402,8 @@ Implemented protections:
 ## Future Improvements
 
 - Run and publish the V1→Final prompt comparison on a real LLM
-- Add a labelled evaluation subset to recover precision/recall/F1
-- ICD-10-PCS support for procedures
+- Add a larger, independently-labelled evaluation subset
+- Broaden ICD-10-PCS coverage beyond the curated common-procedure set
 
 ---
 

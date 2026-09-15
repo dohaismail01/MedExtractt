@@ -1,9 +1,11 @@
 import httpx
 
+from conftest import FakeIcd10Source
+
 from medextract.config import get_settings
 from medextract.icd10 import source as source_mod
 from medextract.icd10.agent import Icd10Agent
-from medextract.icd10.source import LocalSqliteSource, NlmOnlineSource, get_source
+from medextract.icd10.source import Candidate, NlmOnlineSource, get_source
 from medextract.icd10.tools import Icd10Tools
 from medextract.schemas import ClinicalFact, Evidence, ExtractionResult, Status
 
@@ -13,37 +15,14 @@ def _fact(text, status=Status.PRESENT):
 
 
 def source():
-    return LocalSqliteSource()
+    return FakeIcd10Source()
 
 
 def agent():
     return Icd10Agent(source=source())
 
 
-# --- source ---
-def test_source_search_exact_alias():
-    hits = source().search("hypertension")
-    assert hits and hits[0].code == "I10" and hits[0].score >= 0.99
-
-
-def test_source_validate():
-    s = source()
-    assert s.validate("I10") is True
-    assert s.validate("ZZ.99") is False
-
-
-def test_source_get_category():
-    cat = source().get_category("R07.9")
-    codes = {c.code for c in cat}
-    assert "R07.9" in codes and "R07.89" in codes  # same R07 family
-
-
-def test_source_no_pcs():
-    assert source().supports_pcs is False
-    assert source().search("appendectomy", code_type="PCS") == []
-
-
-# --- agent ---
+# --- agent behavior (deterministic offline fake source) ----------------------
 def test_resolve_direct_accept():
     tools = Icd10Tools(source())
     c = agent().resolve("hypertension", tools)
@@ -80,19 +59,40 @@ def test_per_term_call_bound():
     assert len(searches) <= cfg.max_icd10_tool_calls_per_term
 
 
-def test_procedures_pcs_unsupported():
+def test_resolution_path_is_recorded():
+    c = agent().resolve("hypertension", Icd10Tools(source()))
+    assert c.resolution_path and c.resolution_path[0].startswith("search:")
+
+
+def test_coding_is_suggestion_confidence_and_review_present():
+    c = agent().resolve("hypertension", Icd10Tools(source()))
+    assert 0.0 <= c.confidence <= 1.0
+    assert isinstance(c.needs_review, bool)
+
+
+# --- procedures: online-only means no PCS source -> abstain ------------------
+def test_procedures_abstain_no_online_pcs():
     tools = Icd10Tools(source())
+    assert tools.supports_pcs is False
     c = agent().resolve("appendectomy", tools, code_type="PCS")
-    assert c.code is None
+    assert c.code is None and c.needs_review is True
     assert "pcs_unsupported" in c.resolution_path
 
 
+def test_code_result_procedures_abstain():
+    r = ExtractionResult(procedures=[_fact("colonoscopy")])
+    codes, _ = agent().code_result(r)
+    assert len(codes) == 1
+    assert codes[0].code is None and codes[0].needs_review is True
+
+
+# --- code_result over diagnoses / history ------------------------------------
 def test_code_result_skips_negated_and_family():
     r = ExtractionResult(
         diagnosis=[_fact("hypertension", status=Status.NEGATED)],
         medical_history=[_fact("diabetes", status=Status.FAMILY_HISTORY)],
     )
-    codes, calls = agent().code_result(r)
+    codes, _ = agent().code_result(r)
     assert codes == []
 
 
@@ -111,53 +111,12 @@ def test_note_ceiling_enforced():
     assert calls <= 2
 
 
-# --- online (NLM) source: hermetic, no real network ---
-def _fake_nlm_response(monkeypatch, payload):
-    """Patch httpx.get to return a canned NLM Clinical Table response."""
-    def fake_get(url, params=None, timeout=None):
-        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
-    monkeypatch.setattr(source_mod.httpx, "get", fake_get)
-
-
-def test_nlm_search_parses_response(monkeypatch):
-    _fake_nlm_response(monkeypatch, [1, ["I10"], None, [["I10", "Essential (primary) hypertension"]]])
-    src = NlmOnlineSource()
-    hits = src.search("hypertension")
-    assert hits and hits[0].code == "I10"
-    assert "hypertension" in hits[0].description.lower()
-
-
-def test_nlm_validate_and_lookup(monkeypatch):
-    _fake_nlm_response(monkeypatch, [1, ["E11.9"], None, [["E11.9", "Type 2 diabetes mellitus without complications"]]])
-    src = NlmOnlineSource()
-    assert src.validate("E11.9") is True
-    assert src.lookup("E11.9").code == "E11.9"
-
-
-def test_nlm_falls_back_to_local_on_network_error(monkeypatch):
-    def boom(url, params=None, timeout=None):
-        raise httpx.ConnectError("offline")
-    monkeypatch.setattr(source_mod.httpx, "get", boom)
-    src = NlmOnlineSource()  # fallback defaults to LocalSqliteSource
-    hits = src.search("hypertension")
-    assert hits and hits[0].code == "I10"  # served by the local fallback
-
-
-def test_get_source_selects_backend():
-    assert isinstance(get_source("local_sqlite"), LocalSqliteSource)
-    assert isinstance(get_source("nlm"), NlmOnlineSource)
-
-
-# --- PRIORITY 6/7: bounded-agent behavior & candidate ranking ----------------
-from medextract.icd10.source import Candidate  # noqa: E402
-
-
+# --- controllable candidate ranking / rejection (explicit fake) --------------
 class _FakeSource:
-    """A controllable source for asserting agent decisions independent of data."""
     supports_pcs = False
 
     def __init__(self, results, valid_codes):
-        self._results = results          # dict: query.lower() -> [Candidate,...]
+        self._results = results
         self._valid = {c.upper() for c in valid_codes}
         self.searches = []
 
@@ -183,28 +142,24 @@ def test_strong_candidate_accepted():
 
 
 def test_multiple_candidates_best_is_selected():
-    # search returns several; the top-scored valid one wins
     src = _FakeSource({"sepsis": [
         Candidate("A41.9", "Sepsis, unspecified", 0.93),
         Candidate("A41.50", "Gram-negative sepsis", 0.72),
     ]}, {"A41.9", "A41.50"})
     c = Icd10Agent(source=src).resolve("sepsis", Icd10Tools(src))
-    assert c.code == "A41.9"  # highest score selected
+    assert c.code == "A41.9"
 
 
 def test_weak_result_triggers_broader_search():
-    # direct term weak; dropping the modifier finds a strong match
     src = _FakeSource({
         "acute bronchitis": [Candidate("J20.9", "Acute bronchitis", 0.55)],
         "bronchitis": [Candidate("J40", "Bronchitis", 0.9)],
     }, {"J20.9", "J40"})
-    agent = Icd10Agent(source=src)
-    c = agent.resolve("acute bronchitis", Icd10Tools(src))
+    c = Icd10Agent(source=src).resolve("acute bronchitis", Icd10Tools(src))
     assert any("broaden" in p for p in c.resolution_path)
 
 
 def test_invalid_code_is_rejected_agent_abstains():
-    # top candidate scores high but fails validation -> must NOT be returned
     src = _FakeSource({"madeupitis": [Candidate("ZZ.99", "bogus", 0.99)]}, valid_codes=set())
     c = Icd10Agent(source=src).resolve("madeupitis", Icd10Tools(src))
     assert c.code is None and c.needs_review is True
@@ -214,27 +169,50 @@ def test_invalid_code_is_rejected_agent_abstains():
 def test_low_confidence_yields_null_and_needs_review():
     src = _FakeSource({"vague complaint": [Candidate("R69", "Illness unspecified", 0.3)]}, {"R69"})
     c = Icd10Agent(source=src).resolve("vague complaint", Icd10Tools(src))
-    assert c.code is None
-    assert c.needs_review is True
-    assert c.confidence < 0.6
+    assert c.code is None and c.needs_review is True and c.confidence < 0.6
 
 
 def test_agent_never_invents_code_when_no_candidates():
-    src = _FakeSource({}, valid_codes=set())  # search returns nothing at all
+    src = _FakeSource({}, valid_codes=set())
     c = Icd10Agent(source=src).resolve("anything", Icd10Tools(src))
     assert c.code is None and c.needs_review is True
 
 
-def test_resolution_path_is_recorded():
-    tools = Icd10Tools(source())
-    c = agent().resolve("hypertension", tools)
-    assert c.resolution_path  # non-empty audit trail
-    assert c.resolution_path[0].startswith("search:")
+# --- online source (NLM): hermetic, no real network --------------------------
+def _fake_nlm_response(monkeypatch, payload):
+    def fake_get(url, params=None, timeout=None):
+        return httpx.Response(200, json=payload, request=httpx.Request("GET", url))
+    monkeypatch.setattr(source_mod.httpx, "get", fake_get)
 
 
-def test_coding_is_suggestion_confidence_and_review_present():
-    tools = Icd10Tools(source())
-    c = agent().resolve("hypertension", tools)
-    # every suggestion carries confidence + needs_review (it is advisory, not a decision)
-    assert 0.0 <= c.confidence <= 1.0
-    assert isinstance(c.needs_review, bool)
+def test_nlm_search_parses_response(monkeypatch):
+    _fake_nlm_response(monkeypatch, [1, ["I10"], None, [["I10", "Essential (primary) hypertension"]]])
+    hits = NlmOnlineSource().search("hypertension")
+    assert hits and hits[0].code == "I10"
+    assert "hypertension" in hits[0].description.lower()
+
+
+def test_nlm_validate_and_lookup(monkeypatch):
+    _fake_nlm_response(monkeypatch, [1, ["E11.9"], None, [["E11.9", "Type 2 diabetes mellitus without complications"]]])
+    src = NlmOnlineSource()
+    assert src.validate("E11.9") is True
+    assert src.lookup("E11.9").code == "E11.9"
+
+
+def test_nlm_no_pcs():
+    # there is no online ICD-10-PCS service -> PCS search returns nothing
+    assert NlmOnlineSource().supports_pcs is False
+    assert NlmOnlineSource().search("appendectomy", code_type="PCS") == []
+
+
+def test_nlm_returns_empty_on_network_error_no_fallback(monkeypatch):
+    def boom(url, params=None, timeout=None):
+        raise httpx.ConnectError("offline")
+    monkeypatch.setattr(source_mod.httpx, "get", boom)
+    # online-only: on failure there is NO local fallback -> empty -> agent abstains
+    assert NlmOnlineSource().search("hypertension") == []
+
+
+def test_get_source_is_online():
+    assert isinstance(get_source(), NlmOnlineSource)
+    assert isinstance(get_source("nlm"), NlmOnlineSource)

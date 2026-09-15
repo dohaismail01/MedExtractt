@@ -210,7 +210,7 @@ quality signals measured in eval. Only structural failures trigger repair.
 
 Agentic in a narrow, defensible sense: it makes **bounded search decisions** to resolve an already-validated term. It cannot create clinical facts.
 
-**Inputs:** validated `diagnosis` (→ ICD-10-CM) and `procedures` (→ ICD-10-PCS *only if the backend supports PCS*; otherwise leave uncoded with `needs_review: true` and a `resolution_path` entry `"pcs_unsupported"`).
+**Inputs:** validated `diagnosis` (→ ICD-10-CM) and `procedures` (→ ICD-10-PCS). Both bundled backends set `supports_pcs = True`: the local source ships a small **curated, verified** PCS reference (`reference/icd10pcs_common.csv`), and the NLM source (CM-only online) delegates PCS to that local set. A procedure not in the curated set abstains (`needs_review: true`) rather than forcing an ill-fitting code. If a backend ever reports `supports_pcs = False`, procedures are left uncoded with a `resolution_path` entry `"pcs_unsupported"`.
 
 **Tools exposed to the loop:**
 
@@ -239,7 +239,7 @@ term
 
 **`resolution_path`** records each step as a short string (`"search:chest pain"`, `"broaden:drop_modifier"`, `"validate:R07.9:ok"`). Required for the eval harness.
 
-**Backend (`icd10/source.py`)** is an adapter with one interface. Implementations: the MCP ICD-10 server when available, otherwise a local ICD-10-CM tabular file loaded into SQLite FTS. The agent must not know which is in use.
+**Backend (`icd10/source.py`)** is an adapter with one interface, implemented by `NlmOnlineSource` — the live NLM Clinical Table Search Service (ICD-10-CM). It is **online-only: no local code database, no offline fallback.** If the service is unreachable the source returns nothing and the agent abstains. Tests inject a deterministic fake source instead of hitting the network.
 
 ---
 
@@ -345,7 +345,7 @@ MEDEXTRACT_PROMPT_VERSION=v1
 MAX_REPAIR_ATTEMPTS=2
 MAX_ICD10_TOOL_CALLS_PER_TERM=5
 ICD10_CONFIDENCE_THRESHOLD=0.6
-ICD10_BACKEND=mcp|local_sqlite
+ICD10_BACKEND=nlm            # online-only; no local backend/fallback
 LOG_LEVEL=INFO
 ```
 

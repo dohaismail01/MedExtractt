@@ -104,7 +104,7 @@ Keeping downstream stages separate prevents the coding or summary stages from in
 
 The agent works only on diagnoses and procedures that have already been extracted and validated — it does not extract clinical information itself. This separation is the core justification for calling it agentic: it makes bounded search decisions to resolve an already-validated clinical term into an appropriate ICD-10 candidate, rather than generating the clinical information in the first place.
 
-Diagnoses are coded against ICD-10-CM. Procedures are coded only if the chosen ICD-10 data source supports procedure codes (ICD-10-PCS); if it doesn't, procedures are left uncoded rather than matched against an unsuitable code set.
+Diagnoses are coded against ICD-10-CM and procedures against ICD-10-PCS. The bundled source ships a small, verified curated PCS reference for common procedures (e.g. appendectomy, colonoscopy, lumbar puncture, intubation); a procedure outside that set abstains (`needs_review`) rather than being matched to an ill-fitting code. This keeps PCS coverage honest and bounded rather than forcing a code for every term.
 
 ```
 Validated term

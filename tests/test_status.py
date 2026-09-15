@@ -78,3 +78,48 @@ def test_negated_excluded_from_summary_as_present():
     # denied findings are listed under "Explicitly denied", never as reported
     assert "Explicitly denied" in resp.summary
     assert "chest pain" in resp.summary  # present, but in the denied clause
+
+
+# --- negated / family-history must never read as a positive patient diagnosis -
+# Extraction is the LLM's job, so we script the ideal classification and assert
+# the OUTPUT SHAPING contract deterministically (to_brief drops negated/family
+# from the affirmative arrays; the rich model preserves status + evidence).
+def test_negated_diabetes_not_a_positive_diagnosis(scripted_run):
+    note = "Patient denies diabetes."
+    out = {"diagnosis": [{"text": "diabetes", "status": "negated",
+                          "evidence": "Patient denies diabetes"}]}
+    resp, _ = scripted_run(note, [out])
+    # flat/affirmative output: no positive diabetes diagnosis
+    assert to_brief(resp)["diagnosis"] == []
+    # rich/audit output: status + evidence preserved
+    d = [f for f in resp.diagnosis if f.text == "diabetes"]
+    assert d and d[0].status == Status.NEGATED and d[0].evidence.text
+
+
+def test_family_history_diabetes_not_a_patient_diagnosis(scripted_run):
+    note = "His mother has a history of diabetes."
+    out = {"medical_history": [{"text": "diabetes", "status": "family_history",
+                                "evidence": "His mother has a history of diabetes"}]}
+    resp, _ = scripted_run(note, [out])
+    assert to_brief(resp)["diagnosis"] == []            # not a diagnosis
+    assert any(h.text == "diabetes" and h.status == Status.FAMILY_HISTORY
+               for h in resp.medical_history)           # classified as family history
+
+
+def test_combined_denied_and_family_history_no_positive_diagnosis(scripted_run):
+    note = "Patient denies diabetes. His mother has a history of diabetes."
+    out = {
+        "diagnosis": [{"text": "diabetes", "status": "negated",
+                       "evidence": "Patient denies diabetes"}],
+        "medical_history": [{"text": "diabetes", "status": "family_history",
+                             "evidence": "His mother has a history of diabetes"}],
+    }
+    resp, _ = scripted_run(note, [out])
+    # the patient's positive diagnosis list is empty
+    assert to_brief(resp)["diagnosis"] == []
+    # both contexts preserved with correct status in the rich output
+    assert any(d.status == Status.NEGATED for d in resp.diagnosis)
+    assert any(h.status == Status.FAMILY_HISTORY for h in resp.medical_history)
+    # neither is sent to the ICD-10 agent as a codeable condition
+    assert all(c.source_term.lower() != "diabetes" or c.code is None
+               for c in resp.icd10_codes)

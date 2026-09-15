@@ -19,7 +19,7 @@ against, and none are invented.
 ## 2. Labelled subset (P/R/F1)
 
 ```bash
-MEDEXTRACT_LLM_PROVIDER=stub ICD10_BACKEND=local_sqlite \
+MEDEXTRACT_LLM_PROVIDER=stub \
   python -m eval.run_eval --dataset eval/datasets/labeled_mini.jsonl
 ```
 
@@ -37,9 +37,13 @@ urgency, and selected ICD-10 codes.
 ### Recorded results on `labeled_mini.jsonl`
 
 Two runs of the same 30 notes: the offline `stub` (reproducible, deterministic)
-and a real LLM (Groq `openai/gpt-oss-20b`, `ICD10_BACKEND=local_sqlite`, so ICD-10
-is scored against the same local gold). The real run paces itself under Groq's
+and a real LLM (Groq `openai/gpt-oss-20b`). The real run paces itself under Groq's
 free-tier tokens-per-minute cap via the client's retry/backoff.
+
+> Note: these numbers were recorded when ICD-10 used a local code set. ICD-10 is
+> now **online-only** (NLM), so re-running will query NLM live and the ICD-10
+> figures (top-1 / abstention) will differ and depend on connectivity; the
+> extraction metrics (P/R/F1, grounding) are unaffected by the ICD-10 backend.
 
 | metric | stub | Groq gpt-oss-20b |
 |---|---|---|

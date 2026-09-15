@@ -1,29 +1,26 @@
 """ICD-10 data backend adapter (SPEC.md §4).
 
-One interface, swappable implementation. ``LocalSqliteSource`` loads the bundled
-ICD-10-CM tabular file into an in-memory SQLite FTS5 table for retrieval and
-scores candidates with rapidfuzz. The agent must not know which is in use.
+The ICD-10 coding agent's mission is to **search online** for a code — there is
+no local code database and no local fallback. ``NlmOnlineSource`` queries the
+public US National Library of Medicine Clinical Table Search Service for
+ICD-10-CM (diagnosis) codes. If the service cannot be reached, the source
+returns nothing and the agent abstains (``code: null``, ``needs_review: true``)
+rather than serving canned data.
 
-Only ICD-10-CM (diagnosis) is provided here; ``supports_pcs`` is False, so the
-agent leaves procedures uncoded (approach.md §5 / SPEC.md §4).
+ICD-10-PCS (procedures) has no free online search service, so ``supports_pcs``
+is False and the agent leaves procedures uncoded (``resolution_path`` entry
+``"pcs_unsupported"``). Only the extracted clinical *term* (e.g. "hypertension")
+is ever sent to the service — never the note or any PHI.
 """
 
 from __future__ import annotations
 
-import csv
 import re
-import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Protocol
 
 import httpx
 from rapidfuzz import fuzz
-
-REFERENCE = Path(__file__).resolve().parent.parent.parent.parent / "reference" / "icd10_common.csv"
-
-_STOP = {"unspecified", "of", "the", "with", "without", "and", "disorder",
-         "disease", "syndrome", "nos"}
 
 
 @dataclass
@@ -31,10 +28,6 @@ class Candidate:
     code: str
     description: str
     score: float  # 0..1
-
-
-def _tokens(text: str) -> List[str]:
-    return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if t and t not in _STOP]
 
 
 def _nlm_score(query: str, name: str) -> float:
@@ -56,96 +49,23 @@ class Icd10Source(Protocol):
     def get_category(self, code: str) -> List[Candidate]: ...
 
 
-class LocalSqliteSource:
-    supports_pcs = False
-
-    def __init__(self, path: Path = REFERENCE) -> None:
-        self.rows = []
-        with open(path, newline="", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                r["keywords"] = r.get("keywords", "")
-                self.rows.append(r)
-        self._codes = {r["code"].upper(): r for r in self.rows}
-        self._db = sqlite3.connect(":memory:")
-        self._fts = True
-        try:
-            self._db.execute("CREATE VIRTUAL TABLE codes USING fts5(code, description, keywords)")
-        except sqlite3.OperationalError:  # pragma: no cover - fts5 unavailable
-            self._fts = False
-            self._db.execute("CREATE TABLE codes (code, description, keywords)")
-        self._db.executemany(
-            "INSERT INTO codes (code, description, keywords) VALUES (?, ?, ?)",
-            [(r["code"], r["description"], r["keywords"].replace("|", " ")) for r in self.rows],
-        )
-        self._db.commit()
-
-    def _retrieve(self, query: str) -> List[dict]:
-        tokens = _tokens(query)
-        if self._fts and tokens:
-            fts_q = " OR ".join(tokens)
-            try:
-                cur = self._db.execute(
-                    "SELECT code, description, keywords FROM codes WHERE codes MATCH ?",
-                    (fts_q,),
-                )
-                hits = [dict(zip(("code", "description", "keywords"), row)) for row in cur.fetchall()]
-                if hits:
-                    return hits
-            except sqlite3.OperationalError:
-                pass
-        return [{"code": r["code"], "description": r["description"],
-                 "keywords": r["keywords"].replace("|", " ")} for r in self.rows]
-
-    def _score(self, query: str, row: dict) -> float:
-        q = query.lower().strip()
-        # exact alias phrase match on the original pipe-separated keywords
-        raw_aliases = [a.strip().lower() for a in self._codes[row["code"].upper()]["keywords"].split("|")]
-        if q in raw_aliases:
-            return 1.0
-        best = 0.0
-        for target in raw_aliases + [row["description"].lower()]:
-            best = max(best, fuzz.token_set_ratio(q, target) / 100.0)
-        return round(best, 3)
-
-    def search(self, query: str, code_type: str = "CM", limit: int = 5) -> List[Candidate]:
-        if code_type != "CM":
-            return []
-        cands = [Candidate(r["code"], r["description"], self._score(query, r))
-                 for r in self._retrieve(query)]
-        cands = [c for c in cands if c.score > 0]
-        cands.sort(key=lambda c: c.score, reverse=True)
-        return cands[:limit]
-
-    def lookup(self, code: str) -> Optional[Candidate]:
-        r = self._codes.get(code.upper())
-        return Candidate(r["code"], r["description"], 1.0) if r else None
-
-    def validate(self, code: str) -> bool:
-        return bool(code) and code.upper() in self._codes
-
-    def get_category(self, code: str) -> List[Candidate]:
-        prefix = code.split(".")[0].upper()
-        return [Candidate(r["code"], r["description"], 0.5)
-                for r in self.rows if r["code"].upper().split(".")[0] == prefix]
-
-
 class NlmOnlineSource:
     """Online ICD-10-CM lookup via the NLM Clinical Table Search Service.
 
     Public US National Library of Medicine API (no key, no auth):
     https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search
 
-    Only the extracted clinical *term* (e.g. "hypertension") is sent — never the
-    note or any PHI. On any network error it transparently falls back to the
-    bundled local source so the agent keeps working offline.
+    Online-only: on any network/HTTP error the call returns nothing (search ->
+    [], lookup -> None, validate -> False), so the agent abstains rather than
+    inventing or serving local data. ICD-10-CM (diagnosis) only; ``supports_pcs``
+    is False because there is no comparable free online ICD-10-PCS service.
     """
 
-    supports_pcs = False  # NLM endpoint is ICD-10-CM only
+    supports_pcs = False
     _URL = "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search"
 
-    def __init__(self, timeout: float = 8.0, fallback: Optional[Icd10Source] = None) -> None:
+    def __init__(self, timeout: float = 8.0) -> None:
         self.timeout = timeout
-        self._fallback = fallback if fallback is not None else LocalSqliteSource()
 
     def _get(self, params: dict) -> Optional[list]:
         """Return the NLM response array, or None on any failure."""
@@ -158,11 +78,11 @@ class NlmOnlineSource:
 
     def search(self, query: str, code_type: str = "CM", limit: int = 5) -> List[Candidate]:
         if code_type != "CM":
-            return []
+            return []  # no online ICD-10-PCS service; agent abstains on procedures
         data = self._get({"terms": query, "sf": "code,name", "df": "code,name",
                           "maxList": max(limit, 7)})
         if data is None:
-            return self._fallback.search(query, code_type, limit)
+            return []  # service unreachable -> no candidates -> agent abstains
         # shape: [total, [codes], null|hash, [[code, name], ...]]
         pairs = data[3] if len(data) > 3 and isinstance(data[3], list) else []
         q = query.lower().strip()
@@ -182,7 +102,7 @@ class NlmOnlineSource:
     def lookup(self, code: str) -> Optional[Candidate]:
         data = self._get({"terms": code, "sf": "code", "df": "code,name", "maxList": 7})
         if data is None:
-            return self._fallback.lookup(code)
+            return None
         pairs = data[3] if len(data) > 3 and isinstance(data[3], list) else []
         target = code.upper().strip()
         for row in pairs:
@@ -197,18 +117,14 @@ class NlmOnlineSource:
         prefix = code.split(".")[0].upper()
         data = self._get({"terms": prefix, "sf": "code", "df": "code,name", "maxList": 20})
         if data is None:
-            return self._fallback.get_category(code)
+            return []
         pairs = data[3] if len(data) > 3 and isinstance(data[3], list) else []
         return [Candidate(code=r[0], description=r[1] if len(r) > 1 else "", score=0.5)
                 for r in pairs if r and r[0].upper().split(".")[0] == prefix]
 
 
-def get_source(name: str) -> Icd10Source:
-    """Select the ICD-10 backend by name (SPEC.md §4).
-
-    - "nlm" / "online" -> live NLM Clinical Table Search Service (+ local fallback)
-    - "local_sqlite" (default) -> bundled ICD-10-CM CSV in in-memory SQLite FTS
-    """
-    if name in ("nlm", "online"):
-        return NlmOnlineSource()
-    return LocalSqliteSource()
+def get_source(name: str = "nlm") -> Icd10Source:
+    """The ICD-10 backend. Online-only: always the live NLM Clinical Table Search
+    Service. There is no local backend or fallback by design (the agent's mission
+    is to search online); tests inject a fake source instead of hitting the network."""
+    return NlmOnlineSource()

@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { extractRich, health, ApiError, API_URL } from "./api";
-import type { RichResponse } from "./types";
+import type { RichResponse, RichFact } from "./types";
 import { URGENCY_MAP } from "./types";
+
+// A patient positively has a fact only when it is present / historical /
+// uncertain. Negated and family_history are excluded from the affirmative
+// sections so a denied or a relative's condition never reads as the patient's.
+const affirmative = (xs: RichFact[]): RichFact[] =>
+  xs.filter(
+    (f) => f.status === "present" || f.status === "historical" || f.status === "uncertain"
+  );
 import HighlightedNote from "./components/HighlightedNote";
 import FactList from "./components/FactList";
 import MedicationTable from "./components/MedicationTable";
@@ -35,6 +43,31 @@ export default function App() {
         /* keep fallback disclaimer if the backend is unreachable */
       });
   }, []);
+
+  // Negated findings pulled out of the affirmative sections, shown separately.
+  const negated: RichFact[] = result
+    ? [...result.symptoms, ...result.diagnosis, ...result.procedures].filter(
+        (f) => f.status === "negated"
+      )
+    : [];
+
+  // Save the current (validated, rich) result as a JSON file the clinician can
+  // keep — evidence spans, statuses, and ICD-10 resolution paths included.
+  function downloadJson() {
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.download = `medextract-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   async function onSubmit() {
     if (!note.trim() || loading) return;
@@ -137,9 +170,18 @@ export default function App() {
 
           {result && (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-900">Result</h2>
-                <UrgencyBadge urgency={result.urgency ? URGENCY_MAP[result.urgency] : null} />
+                <div className="flex items-center gap-2">
+                  <UrgencyBadge urgency={result.urgency ? URGENCY_MAP[result.urgency] : null} />
+                  <button
+                    onClick={downloadJson}
+                    title="Download the structured result (evidence, status, ICD-10) as JSON"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
+                  >
+                    Save JSON
+                  </button>
+                </div>
               </div>
 
               {result.summary && (
@@ -165,11 +207,17 @@ export default function App() {
                 </section>
               )}
 
-              <FactList title="Symptoms" items={result.symptoms} />
-              <FactList title="Diagnoses" items={result.diagnosis} />
+              {/* Affirmative sections show only what the patient positively has
+                  (present / historical / uncertain). Negated findings are shown
+                  separately below so a denied condition never reads as a positive
+                  diagnosis; family_history lives under Medical history. Status +
+                  evidence are preserved throughout. */}
+              <FactList title="Symptoms" items={affirmative(result.symptoms)} />
+              <FactList title="Diagnoses" items={affirmative(result.diagnosis)} />
               <FactList title="Medical history" items={result.medical_history} />
               <MedicationTable meds={result.medications} />
-              <FactList title="Procedures" items={result.procedures} />
+              <FactList title="Procedures" items={affirmative(result.procedures)} />
+              <FactList title="Denied / ruled out" items={negated} />
 
               {result.follow_up && (
                 <section className="rounded-lg border border-slate-200 bg-white p-4">
