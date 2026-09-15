@@ -28,3 +28,7 @@ json outputs/
 
 # test suite kept local, not tracked in the repo (still runnable via pytest)
 tests/
+
+# docs kept local except approach.md (the design rationale stays in the repo)
+docs/*
+!docs/approach.md

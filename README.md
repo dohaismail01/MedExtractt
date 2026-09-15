@@ -402,7 +402,6 @@ Implemented protections:
 
 ## Documentation
 
-- [docs/SPEC.md](docs/SPEC.md) — the technical build contract (schema, pipeline, bounds)
 - [docs/approach.md](docs/approach.md) — design rationale and approach
 - [src/medextract/prompts/CHANGELOG.md](src/medextract/prompts/CHANGELOG.md) — prompt V1→Final iteration and why Final is better
 
